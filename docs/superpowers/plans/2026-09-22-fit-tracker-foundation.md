@@ -144,11 +144,14 @@ export default defineConfig({
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "composite": true,
+    "outDir": "./node_modules/.tsbuild-node"
   },
   "include": ["vite.config.ts"]
 }
 ```
+
+A referenced project must set `composite: true` and must not set `noEmit` — `tsc -b` fails with TS6306/TS6310 otherwise. `outDir` redirects the emitted `vite.config.js`/`.d.ts` into `node_modules` so Vite's config loader cannot pick up a stale compiled config beside the real `.ts` one.
 
 - [ ] **Step 6: Create `index.html`**
 
@@ -243,6 +246,7 @@ export default function App() {
 ```
 node_modules
 dist
+*.tsbuildinfo
 .env
 .env.local
 *.keystore
