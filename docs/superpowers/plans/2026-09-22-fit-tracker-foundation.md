@@ -1850,6 +1850,11 @@ describe('seedExercises', () => {
     expect(await db.exercises.count()).toBe(first);
   });
 
+  it('is idempotent under concurrent calls', async () => {
+    await Promise.all([seedExercises(), seedExercises()]);
+    expect(await db.exercises.count()).toBe(SEED_EXERCISES.length);
+  });
+
   it('does not seed when the library already has rows', async () => {
     await seedExercises();
     await db.exercises.toCollection().modify({ name: 'renamed' });
@@ -1998,22 +2003,28 @@ export const SEED_EXERCISES: SeedExercise[] = [
  * Populates the exercise library on first launch. No-op if any exercise
  * already exists, so a re-run after the user has edited the library cannot
  * resurrect defaults they deleted or overwrite renames.
+ *
+ * The count and the inserts run in one read-write transaction. Without that,
+ * two concurrent callers — which React StrictMode produces on every mount in
+ * development — both observe an empty table and both seed it.
  */
 export async function seedExercises(): Promise<number> {
-  const existing = await db.exercises.count();
-  if (existing > 0) return 0;
+  return db.transaction('rw', db.exercises, async () => {
+    const existing = await db.exercises.count();
+    if (existing > 0) return 0;
 
-  for (const e of SEED_EXERCISES) {
-    await insertRow<Exercise>('exercises', e);
-  }
-  return SEED_EXERCISES.length;
+    for (const e of SEED_EXERCISES) {
+      await insertRow<Exercise>('exercises', e);
+    }
+    return SEED_EXERCISES.length;
+  });
 }
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run src/db/seed.test.ts`
-Expected: PASS, 6 tests
+Expected: PASS, 7 tests
 
 - [ ] **Step 5: Commit**
 

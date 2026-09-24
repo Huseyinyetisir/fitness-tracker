@@ -7,3 +7,4 @@ dist
 keystore.properties
 android/
 .DS_Store
+.claude/launch.json
