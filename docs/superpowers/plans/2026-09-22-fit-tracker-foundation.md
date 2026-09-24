@@ -456,7 +456,7 @@ export interface SyncMeta {
 
 - [ ] **Step 2: Verify it compiles**
 
-Run: `npx tsc -b --noEmit`
+Run: `npx tsc -b`
 Expected: no output, exit code 0
 
 - [ ] **Step 3: Commit**
@@ -646,7 +646,7 @@ export function nowISO(): string {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run src/lib/time.test.ts`
-Expected: PASS, 13 tests
+Expected: PASS, 15 tests
 
 - [ ] **Step 5: Write `src/lib/id.ts`**
 
@@ -860,7 +860,7 @@ export function repMaxes(sets: SetEntry[]): Map<number, number> {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run src/lib/strength.test.ts`
-Expected: PASS, 13 tests
+Expected: PASS, 15 tests
 
 - [ ] **Step 5: Commit**
 
@@ -2710,7 +2710,7 @@ export const SYNCED_TABLES: readonly SyncedTableName[] = [
 
 - [ ] **Step 3: Verify it compiles**
 
-Run: `npx tsc -b --noEmit`
+Run: `npx tsc -b`
 Expected: no output, exit code 0
 
 - [ ] **Step 4: Commit**
