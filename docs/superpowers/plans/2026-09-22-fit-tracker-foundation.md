@@ -2115,7 +2115,7 @@ begin
   new.server_updated_at := now();
   new.user_id := coalesce(new.user_id, auth.uid());
   return new;
-end $$ language plpgsql security definer;
+end $$ language plpgsql;
 
 -- Deliberately does NOT touch updated_at: the client owns that value, which
 -- is what makes last-write-wins deterministic for rows written offline.
