@@ -917,7 +917,7 @@ describe('detectPRs', () => {
   });
 
   it('emits a rep_max PR without an e1rm PR when only the rep max improves', () => {
-    // 8x95 -> e1rm 120.33 ; 3x110 -> e1rm 121.0 ; 3x105 -> e1rm 115.5 (no e1rm PR)
+    // 8x95 -> e1rm 120.33 ; 3x110 -> e1rm 121.0 ; 5x100 -> e1rm 116.67 (no e1rm PR)
     const prs = detectPRs([
       ds('2026-09-01', 3, 110),
       ds('2026-09-08', 8, 95),
