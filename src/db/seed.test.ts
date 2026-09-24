@@ -29,6 +29,11 @@ describe('seedExercises', () => {
     expect(await db.exercises.count()).toBe(first);
   });
 
+  it('is idempotent under concurrent calls', async () => {
+    await Promise.all([seedExercises(), seedExercises()]);
+    expect(await db.exercises.count()).toBe(SEED_EXERCISES.length);
+  });
+
   it('does not seed when the library already has rows', async () => {
     await seedExercises();
     await db.exercises.toCollection().modify({ name: 'renamed' });
