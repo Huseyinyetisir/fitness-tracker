@@ -99,4 +99,19 @@ describe('fatigueFlag', () => {
     ];
     expect(fatigueFlag(points, asOf).flagged).toBe(true);
   });
+
+  it('does not flag when the prior window has no load to compare against', () => {
+    // Bodyweight work logged at 0kg, then loaded. Load rose; this is not fatigue.
+    const points = [lp('2026-09-02', 7, 0), lp('2026-09-16', 8, 20)];
+    const r = fatigueFlag(points, asOf);
+    expect(r.flagged).toBe(false);
+    expect(r.load_change_pct).toBeNull();
+  });
+
+  it('still reports the rpe delta when load cannot be compared', () => {
+    const points = [lp('2026-09-02', 7, 0), lp('2026-09-16', 8, 0)];
+    const r = fatigueFlag(points, asOf);
+    expect(r.flagged).toBe(false);
+    expect(r.rpe_delta).toBeCloseTo(1, 5);
+  });
 });

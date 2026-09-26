@@ -55,9 +55,18 @@ export function fatigueFlag(points: LoadPoint[], asOf: ISODate): FatigueResult {
   }
 
   const rpeDelta = mean(recent.map((p) => p.rpe)) - mean(prior.map((p) => p.rpe));
+
   const priorLoad = mean(prior.map((p) => p.top_set_load));
   const recentLoad = mean(recent.map((p) => p.top_set_load));
-  const loadChange = priorLoad === 0 ? 0 : (recentLoad - priorLoad) / priorLoad;
+
+  // With no prior load there is no baseline, so "did load stay flat" has no
+  // answer — and treating it as flat would fire the flag on every RPE rise,
+  // including bodyweight work that has since been loaded.
+  if (priorLoad <= 0) {
+    return { flagged: false, rpe_delta: rpeDelta, load_change_pct: null };
+  }
+
+  const loadChange = (recentLoad - priorLoad) / priorLoad;
 
   return {
     flagged: rpeDelta >= FATIGUE_RPE_DELTA && loadChange <= FATIGUE_FLAT_LOAD_PCT,
