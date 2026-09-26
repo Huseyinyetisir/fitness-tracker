@@ -1,32 +1,40 @@
 import { useEffect, useState } from 'react';
 import { db } from './db/schema';
 import { seedExercises } from './db/seed';
+import { useAuth, signOut } from './features/auth/useAuth';
+import SignIn from './features/auth/SignIn';
 
 export default function App() {
+  const { session, loading } = useAuth();
   const [count, setCount] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!session) return;
     (async () => {
-      try {
-        await seedExercises();
-        setCount(await db.exercises.count());
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
+      await seedExercises();
+      setCount(await db.exercises.count());
     })();
-  }, []);
+  }, [session]);
+
+  if (loading) {
+    return <main className="p-6 text-[var(--color-muted)]">Loading…</main>;
+  }
+
+  if (!session) return <SignIn />;
 
   return (
-    <main className="p-6 space-y-2">
+    <main className="p-6 space-y-3">
       <h1 className="text-2xl font-semibold">Fit Tracker</h1>
-      {error && <p className="text-red-400">{error}</p>}
-      {count === null && !error && <p className="text-[var(--color-muted)]">Loading…</p>}
-      {count !== null && (
-        <p className="text-[var(--color-muted)]">
-          Exercise library: <span className="text-[var(--color-text)]">{count}</span> exercises
-        </p>
-      )}
+      <p className="text-[var(--color-muted)]">Signed in as {session.user.email}</p>
+      <p className="text-[var(--color-muted)]">
+        Exercise library: <span className="text-[var(--color-text)]">{count ?? '…'}</span>
+      </p>
+      <button
+        onClick={signOut}
+        className="rounded-lg border border-[var(--color-border)] px-4 py-2"
+      >
+        Sign out
+      </button>
     </main>
   );
 }
