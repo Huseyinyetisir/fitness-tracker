@@ -23,6 +23,12 @@ export interface BaseRow {
  */
 export interface LocalMeta {
   _dirty: 0 | 1;
+  /**
+   * Indexed mirror of `deleted_at`. IndexedDB cannot index a boolean and
+   * cannot use `null` as a key, so "is this row deleted" is unqueryable
+   * from `deleted_at` itself.
+   */
+  _deleted: 0 | 1;
 }
 
 export type Local<T> = T & LocalMeta;

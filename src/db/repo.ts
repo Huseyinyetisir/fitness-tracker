@@ -1,4 +1,4 @@
-import type { BaseRow, ISODateTime, Local, UUID } from '../types/domain';
+import type { BaseRow, ISODateTime, Local, LocalMeta, UUID } from '../types/domain';
 import { newId } from '../lib/id';
 import { nowISO } from '../lib/time';
 import { db, type SyncedTableName } from './schema';
@@ -11,13 +11,18 @@ function table(name: SyncedTableName) {
   return db[name] as unknown as import('dexie').Table<Local<BaseRow>, UUID>;
 }
 
+/** Local-only index fields, derived from the row's own state. */
+function localMeta(row: BaseRow): LocalMeta {
+  return { _dirty: 1, _deleted: row.deleted_at ? 1 : 0 };
+}
+
 /** Inserts a row, stamping identity, timestamps, and the dirty flag. */
 export async function insertRow<T extends BaseRow>(
   name: SyncedTableName,
   data: Insertable<T>,
 ): Promise<Local<T>> {
   const ts = nowISO();
-  const row = {
+  const base = {
     ...data,
     id: newId(),
     user_id: null,
@@ -25,8 +30,8 @@ export async function insertRow<T extends BaseRow>(
     updated_at: ts,
     server_updated_at: null,
     deleted_at: null,
-    _dirty: 1 as const,
-  } as Local<T>;
+  } as unknown as BaseRow;
+  const row = { ...base, ...localMeta(base) } as Local<T>;
 
   await table(name).put(row as Local<BaseRow>);
   return row;
@@ -41,12 +46,12 @@ export async function updateRow<T extends BaseRow>(
   const existing = (await table(name).get(id)) as Local<T> | undefined;
   if (!existing) throw new Error(`${name}: no row with id ${id}`);
 
-  const row = {
+  const merged = {
     ...existing,
     ...patch,
     updated_at: nowISO(),
-    _dirty: 1 as const,
-  } as Local<T>;
+  } as unknown as BaseRow;
+  const row = { ...merged, ...localMeta(merged) } as Local<T>;
 
   await table(name).put(row as Local<BaseRow>);
   return row;
@@ -62,6 +67,7 @@ export async function softDeleteRow(name: SyncedTableName, id: UUID): Promise<vo
     deleted_at: nowISO(),
     updated_at: nowISO(),
     _dirty: 1,
+    _deleted: 1,
   });
 }
 

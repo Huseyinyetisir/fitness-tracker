@@ -12,9 +12,9 @@ export interface PushClient {
 
 /** Removes local-only fields and stamps ownership before upload. */
 export function stripLocal<T extends BaseRow>(row: Local<T>, userId?: UUID): T {
-  const { _dirty: _ignored, ...rest } = row;
-  // Omit<Local<T>, '_dirty'> is not provably T — T could itself declare
-  // _dirty — so the compiler needs the widening step spelled out.
+  const { _dirty: _d, _deleted: _del, ...rest } = row;
+  // Omit<Local<T>, '_dirty' | '_deleted'> is not provably T — T could itself
+  // declare them — so the compiler needs the widening step spelled out.
   const out = rest as unknown as T;
   return userId ? { ...out, user_id: userId } : out;
 }

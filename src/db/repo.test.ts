@@ -72,6 +72,26 @@ describe('repo', () => {
     await db.exercises.update(row.id, { _dirty: 0 });
     expect(await dirtyRows('exercises')).toEqual([]);
   });
+
+  it('indexes live and deleted rows so both can be queried', async () => {
+    const live = await insertRow<Exercise>('exercises', baseExercise());
+    const gone = await insertRow<Exercise>('exercises', baseExercise());
+    await softDeleteRow('exercises', gone.id);
+
+    const liveRows = await db.exercises.where('_deleted').equals(0).toArray();
+    const deletedRows = await db.exercises.where('_deleted').equals(1).toArray();
+
+    expect(liveRows.map((r) => r.id)).toEqual([live.id]);
+    expect(deletedRows.map((r) => r.id)).toEqual([gone.id]);
+  });
+
+  it('keeps _deleted consistent with deleted_at on update', async () => {
+    const row = await insertRow<Exercise>('exercises', baseExercise());
+    expect((await db.exercises.get(row.id))?._deleted).toBe(0);
+
+    await softDeleteRow('exercises', row.id);
+    expect((await db.exercises.get(row.id))?._deleted).toBe(1);
+  });
 });
 
 function baseExercise() {

@@ -15,13 +15,14 @@ function row(updated_at: string, extra: Partial<BaseRow> = {}): BaseRow {
 }
 
 function local(updated_at: string, dirty: 0 | 1, extra: Partial<BaseRow> = {}): Local<BaseRow> {
-  return { ...row(updated_at, extra), _dirty: dirty };
+  const r = row(updated_at, extra);
+  return { ...r, _dirty: dirty, _deleted: r.deleted_at ? 1 : 0 };
 }
 
 describe('mergeRow', () => {
   it('takes the remote row when there is no local row', () => {
     const remote = row('2026-09-10T00:00:00.000Z');
-    expect(mergeRow(undefined, remote)).toEqual({ ...remote, _dirty: 0 });
+    expect(mergeRow(undefined, remote)).toEqual({ ...remote, _dirty: 0, _deleted: 0 });
   });
 
   it('keeps the local row when there is no remote row', () => {
@@ -32,7 +33,7 @@ describe('mergeRow', () => {
   it('takes the remote row when remote is newer', () => {
     const l = local('2026-09-10T00:00:00.000Z', 1);
     const remote = row('2026-09-11T00:00:00.000Z');
-    expect(mergeRow(l, remote)).toEqual({ ...remote, _dirty: 0 });
+    expect(mergeRow(l, remote)).toEqual({ ...remote, _dirty: 0, _deleted: 0 });
   });
 
   it('keeps the local row and its dirty flag when local is newer', () => {

@@ -35,18 +35,18 @@ export class FitTrackerDB extends Dexie {
     super('fit_tracker');
 
     this.version(1).stores({
-      exercises: 'id, _dirty, updated_at, deleted_at, modality, muscle_group, sort_order',
-      workout_templates: 'id, _dirty, updated_at, deleted_at, name',
-      workout_template_items: 'id, _dirty, updated_at, deleted_at, template_id, position',
-      week_plans: 'id, _dirty, updated_at, deleted_at, active_from',
-      week_plan_days: 'id, _dirty, updated_at, deleted_at, week_plan_id, weekday',
-      sessions: 'id, _dirty, updated_at, deleted_at, date, status, was_planned',
-      session_exercises: 'id, _dirty, updated_at, deleted_at, session_id, position',
-      set_entries: 'id, _dirty, updated_at, deleted_at, session_exercise_id, set_index',
-      runs: 'id, _dirty, updated_at, deleted_at, session_id',
-      run_splits: 'id, _dirty, updated_at, deleted_at, run_id, split_index',
-      body_metrics: 'id, _dirty, updated_at, deleted_at, date',
-      user_prefs: 'id, _dirty, updated_at, deleted_at',
+      exercises: 'id, _dirty, _deleted, updated_at, modality, muscle_group, sort_order',
+      workout_templates: 'id, _dirty, _deleted, updated_at, name',
+      workout_template_items: 'id, _dirty, _deleted, updated_at, template_id, position',
+      week_plans: 'id, _dirty, _deleted, updated_at, active_from',
+      week_plan_days: 'id, _dirty, _deleted, updated_at, week_plan_id, weekday',
+      sessions: 'id, _dirty, _deleted, updated_at, date, status',
+      session_exercises: 'id, _dirty, _deleted, updated_at, session_id, position',
+      set_entries: 'id, _dirty, _deleted, updated_at, session_exercise_id, set_index',
+      runs: 'id, _dirty, _deleted, updated_at, session_id',
+      run_splits: 'id, _dirty, _deleted, updated_at, run_id, split_index',
+      body_metrics: 'id, _dirty, _deleted, updated_at, date',
+      user_prefs: 'id, _dirty, _deleted, updated_at',
       sync_meta: 'table',
     });
   }

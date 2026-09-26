@@ -49,18 +49,18 @@ beforeEach(async () => {
 
 describe('stripLocal', () => {
   it('removes the _dirty field', () => {
-    const out = stripLocal<BaseRow>({ ...bareRow(), _dirty: 1 });
+    const out = stripLocal<BaseRow>({ ...bareRow(), _dirty: 1, _deleted: 0 });
     expect('_dirty' in out).toBe(false);
     expect(out.id).toBe('a');
   });
 
   it('keeps every synced column', () => {
-    const out = stripLocal<BaseRow>({ ...bareRow(), _dirty: 1 });
+    const out = stripLocal<BaseRow>({ ...bareRow(), _dirty: 1, _deleted: 0 });
     expect(out).toEqual(bareRow());
   });
 
   it('stamps user_id onto the row', () => {
-    const out = stripLocal<BaseRow>({ ...bareRow(), _dirty: 1 }, 'u1');
+    const out = stripLocal<BaseRow>({ ...bareRow(), _dirty: 1, _deleted: 0 }, 'u1');
     expect(out.user_id).toBe('u1');
   });
 });

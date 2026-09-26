@@ -25,20 +25,31 @@ function instant(ts: ISODateTime): number {
   return Date.parse(ts);
 }
 
+/** A row taken from remote, with correct local index fields attached. */
+function fromRemote<T extends BaseRow>(remoteRow: T): Local<T> {
+  return {
+    ...remoteRow,
+    _dirty: 0,
+    _deleted: remoteRow.deleted_at ? 1 : 0,
+  } as Local<T>;
+}
+
 export function mergeRow<T extends BaseRow>(
   localRow: Local<T> | undefined,
   remoteRow: T | undefined,
 ): Local<T> | undefined {
   if (!localRow && !remoteRow) return undefined;
-  if (!localRow) return { ...(remoteRow as T), _dirty: 0 } as Local<T>;
+  if (!localRow) return fromRemote(remoteRow as T);
   if (!remoteRow) return localRow;
 
   if (instant(remoteRow.updated_at) >= instant(localRow.updated_at)) {
-    return { ...remoteRow, _dirty: 0 } as Local<T>;
+    return fromRemote(remoteRow);
   }
 
   // Local wins, so the server is behind and needs this row. Re-queue it:
   // returning it untouched would leave a clean row permanently newer than
   // the server, and no later sync would ever push it.
-  return localRow._dirty === 1 ? localRow : { ...localRow, _dirty: 1 };
+  return localRow._dirty === 1
+    ? localRow
+    : { ...localRow, _dirty: 1, _deleted: localRow.deleted_at ? 1 : 0 };
 }
