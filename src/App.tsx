@@ -3,6 +3,7 @@ import { db } from './db/schema';
 import { seedExercises } from './db/seed';
 import { useAuth, signOut } from './features/auth/useAuth';
 import SignIn from './features/auth/SignIn';
+import SyncStatus from './features/settings/SyncStatus';
 
 export default function App() {
   const { session, loading } = useAuth();
@@ -23,9 +24,9 @@ export default function App() {
   if (!session) return <SignIn />;
 
   return (
-    <main className="p-6 space-y-3">
+    <main className="p-6 space-y-4">
       <h1 className="text-2xl font-semibold">Fit Tracker</h1>
-      <p className="text-[var(--color-muted)]">Signed in as {session.user.email}</p>
+      <SyncStatus userId={session.user.id} />
       <p className="text-[var(--color-muted)]">
         Exercise library: <span className="text-[var(--color-text)]">{count ?? '…'}</span>
       </p>
