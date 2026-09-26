@@ -2886,7 +2886,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { db } from '../db/schema';
 import { insertRow, softDeleteRow } from '../db/repo';
 import { pushTable, stripLocal, type PushClient } from './push';
-import type { Exercise } from '../types/domain';
+import type { BaseRow, Exercise } from '../types/domain';
 
 function fakeClient(): PushClient & { calls: unknown[][] } {
   const calls: unknown[][] = [];
@@ -2914,6 +2914,17 @@ function baseExercise() {
   };
 }
 
+function bareRow(): BaseRow {
+  return {
+    id: 'a',
+    user_id: null,
+    created_at: '2026-09-01T00:00:00.000Z',
+    updated_at: '2026-09-01T00:00:00.000Z',
+    server_updated_at: null,
+    deleted_at: null,
+  };
+}
+
 beforeEach(async () => {
   await db.delete();
   await db.open();
@@ -2921,13 +2932,18 @@ beforeEach(async () => {
 
 describe('stripLocal', () => {
   it('removes the _dirty field', () => {
-    const out = stripLocal({ id: 'a', _dirty: 1 } as never);
+    const out = stripLocal<BaseRow>({ ...bareRow(), _dirty: 1 });
     expect('_dirty' in out).toBe(false);
     expect(out.id).toBe('a');
   });
 
+  it('keeps every synced column', () => {
+    const out = stripLocal<BaseRow>({ ...bareRow(), _dirty: 1 });
+    expect(out).toEqual(bareRow());
+  });
+
   it('stamps user_id onto the row', () => {
-    const out = stripLocal({ id: 'a', user_id: null, _dirty: 1 } as never, 'u1');
+    const out = stripLocal<BaseRow>({ ...bareRow(), _dirty: 1 }, 'u1');
     expect(out.user_id).toBe('u1');
   });
 });
@@ -3022,7 +3038,9 @@ export interface PushClient {
 /** Removes local-only fields and stamps ownership before upload. */
 export function stripLocal<T extends BaseRow>(row: Local<T>, userId?: UUID): T {
   const { _dirty: _ignored, ...rest } = row;
-  const out = rest as T;
+  // Omit<Local<T>, '_dirty'> is not provably T — T could itself declare
+  // _dirty — so the compiler needs the widening step spelled out.
+  const out = rest as unknown as T;
   return userId ? { ...out, user_id: userId } : out;
 }
 
@@ -3058,7 +3076,7 @@ export async function pushTable(
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run src/sync/push.test.ts`
-Expected: PASS, 8 tests
+Expected: PASS, 9 tests
 
 - [ ] **Step 5: Commit**
 
