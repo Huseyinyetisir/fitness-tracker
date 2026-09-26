@@ -1,4 +1,4 @@
-import type { BaseRow, Local, UUID } from '../types/domain';
+import type { BaseRow, ISODateTime, Local, UUID } from '../types/domain';
 import { newId } from '../lib/id';
 import { nowISO } from '../lib/time';
 import { db, type SyncedTableName } from './schema';
@@ -69,10 +69,22 @@ export async function dirtyRows(name: SyncedTableName): Promise<Local<BaseRow>[]
   return table(name).where('_dirty').equals(1).toArray();
 }
 
-export async function clearDirty(name: SyncedTableName, ids: UUID[]): Promise<void> {
+/**
+ * Clears the dirty flag only for rows that still carry the `updated_at` that
+ * was uploaded. A write landing during the push's network round trip bumps
+ * `updated_at`; clearing that row unconditionally would mark an unsent edit
+ * as synced and it would never be pushed again.
+ */
+export async function clearDirty(
+  name: SyncedTableName,
+  rows: { id: UUID; updated_at: ISODateTime }[],
+): Promise<void> {
   await db.transaction('rw', table(name), async () => {
-    for (const id of ids) {
-      await table(name).update(id, { _dirty: 0 });
+    for (const { id, updated_at } of rows) {
+      const current = await table(name).get(id);
+      if (current && current.updated_at === updated_at) {
+        await table(name).update(id, { _dirty: 0 });
+      }
     }
   });
 }

@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { db } from '../db/schema';
-import { insertRow, softDeleteRow } from '../db/repo';
+import { insertRow, softDeleteRow, updateRow } from '../db/repo';
 import { pushTable, stripLocal, type PushClient } from './push';
 import type { BaseRow, Exercise } from '../types/domain';
 
@@ -128,5 +128,24 @@ describe('pushTable', () => {
 
     expect(n).toBe(250);
     expect(client.calls.length).toBe(3); // 100 + 100 + 50
+  });
+
+  it('does not clear a row that was edited while the push was in flight', async () => {
+    const row = await insertRow<Exercise>('exercises', baseExercise());
+
+    // Upsert resolves only after an interleaved local edit has landed,
+    // reproducing a set logged while sync is waiting on the network.
+    const client: PushClient = {
+      async upsert() {
+        await updateRow<Exercise>('exercises', row.id, { name: 'Logged mid-sync' });
+        return { error: null };
+      },
+    };
+
+    await pushTable(client, 'exercises', 'u1');
+
+    const stored = await db.exercises.get(row.id);
+    expect(stored?.name).toBe('Logged mid-sync');
+    expect(stored?._dirty).toBe(1);
   });
 });

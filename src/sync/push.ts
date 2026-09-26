@@ -40,7 +40,10 @@ export async function pushTable(
     const { error } = await client.upsert(name, payload);
     if (error) throw error;
 
-    await clearDirty(name, batch.map((r) => r.id));
+    await clearDirty(
+      name,
+      batch.map((r) => ({ id: r.id, updated_at: r.updated_at })),
+    );
     pushed += batch.length;
   }
 
