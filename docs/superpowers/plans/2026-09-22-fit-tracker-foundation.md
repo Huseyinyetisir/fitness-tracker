@@ -3668,7 +3668,11 @@ describe('sync round trip', () => {
 
     await syncAll(client, 'u1');
 
-    expect(store.get('exercises')?.get(row.id)?.name).toBe('Back Squat');
+    // The in-memory store is keyed generically by BaseRow; `name` is an
+    // Exercise-specific field, so the read needs a narrowing cast.
+    expect((store.get('exercises')?.get(row.id) as Exercise | undefined)?.name).toBe(
+      'Back Squat',
+    );
     expect((await db.exercises.get(row.id))?._dirty).toBe(0);
   });
 
@@ -3701,7 +3705,9 @@ describe('sync round trip', () => {
 
     // Local edit is newer, so it wins both locally and on the server.
     expect((await db.exercises.get(row.id))?.name).toBe('Local Name');
-    expect(store.get('exercises')?.get(row.id)?.name).toBe('Local Name');
+    expect((store.get('exercises')?.get(row.id) as Exercise | undefined)?.name).toBe(
+      'Local Name',
+    );
     expect((await db.exercises.get(row.id))?._dirty).toBe(0);
   });
 
