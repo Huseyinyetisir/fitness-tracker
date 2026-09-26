@@ -1,0 +1,74 @@
+import { describe, it, expect } from 'vitest';
+import { mergeRow } from './merge';
+import type { BaseRow, Local } from '../types/domain';
+
+function row(updated_at: string, extra: Partial<BaseRow> = {}): BaseRow {
+  return {
+    id: 'r1',
+    user_id: 'u1',
+    created_at: '2026-09-01T00:00:00.000Z',
+    updated_at,
+    server_updated_at: '2026-09-01T00:00:01.000Z',
+    deleted_at: null,
+    ...extra,
+  };
+}
+
+function local(updated_at: string, dirty: 0 | 1, extra: Partial<BaseRow> = {}): Local<BaseRow> {
+  return { ...row(updated_at, extra), _dirty: dirty };
+}
+
+describe('mergeRow', () => {
+  it('takes the remote row when there is no local row', () => {
+    const remote = row('2026-09-10T00:00:00.000Z');
+    expect(mergeRow(undefined, remote)).toEqual({ ...remote, _dirty: 0 });
+  });
+
+  it('keeps the local row when there is no remote row', () => {
+    const l = local('2026-09-10T00:00:00.000Z', 1);
+    expect(mergeRow(l, undefined)).toBe(l);
+  });
+
+  it('takes the remote row when remote is newer', () => {
+    const l = local('2026-09-10T00:00:00.000Z', 1);
+    const remote = row('2026-09-11T00:00:00.000Z');
+    expect(mergeRow(l, remote)).toEqual({ ...remote, _dirty: 0 });
+  });
+
+  it('keeps the local row and its dirty flag when local is newer', () => {
+    const l = local('2026-09-12T00:00:00.000Z', 1);
+    const remote = row('2026-09-11T00:00:00.000Z');
+    const merged = mergeRow(l, remote);
+    expect(merged).toBe(l);
+    expect(merged!._dirty).toBe(1);
+  });
+
+  it('resolves a tie to the remote row so repeated syncs converge', () => {
+    const ts = '2026-09-11T00:00:00.000Z';
+    const l = local(ts, 1);
+    const remote = row(ts, { deleted_at: '2026-09-11T00:00:00.000Z' });
+    const merged = mergeRow(l, remote);
+    expect(merged!.deleted_at).toBe('2026-09-11T00:00:00.000Z');
+    expect(merged!._dirty).toBe(0);
+  });
+
+  it('accepts a remote tombstone that is newer than the local row', () => {
+    const l = local('2026-09-10T00:00:00.000Z', 0);
+    const remote = row('2026-09-11T00:00:00.000Z', {
+      deleted_at: '2026-09-11T00:00:00.000Z',
+    });
+    expect(mergeRow(l, remote)!.deleted_at).toBe('2026-09-11T00:00:00.000Z');
+  });
+
+  it('keeps a local tombstone that is newer than the remote row', () => {
+    const l = local('2026-09-12T00:00:00.000Z', 1, {
+      deleted_at: '2026-09-12T00:00:00.000Z',
+    });
+    const remote = row('2026-09-11T00:00:00.000Z');
+    expect(mergeRow(l, remote)!.deleted_at).toBe('2026-09-12T00:00:00.000Z');
+  });
+
+  it('returns undefined when both sides are missing', () => {
+    expect(mergeRow(undefined, undefined)).toBeUndefined();
+  });
+});
