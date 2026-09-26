@@ -2786,7 +2786,7 @@ describe('mergeRow', () => {
     const remote = row('2026-09-11T00:00:00.000Z');
     const merged = mergeRow(l, remote);
     expect(merged).toBe(l);
-    expect(merged._dirty).toBe(1);
+    expect(merged!._dirty).toBe(1);
   });
 
   it('resolves a tie to the remote row so repeated syncs converge', () => {
@@ -2794,8 +2794,8 @@ describe('mergeRow', () => {
     const l = local(ts, 1);
     const remote = row(ts, { deleted_at: '2026-09-11T00:00:00.000Z' });
     const merged = mergeRow(l, remote);
-    expect(merged.deleted_at).toBe('2026-09-11T00:00:00.000Z');
-    expect(merged._dirty).toBe(0);
+    expect(merged!.deleted_at).toBe('2026-09-11T00:00:00.000Z');
+    expect(merged!._dirty).toBe(0);
   });
 
   it('accepts a remote tombstone that is newer than the local row', () => {
@@ -2803,7 +2803,7 @@ describe('mergeRow', () => {
     const remote = row('2026-09-11T00:00:00.000Z', {
       deleted_at: '2026-09-11T00:00:00.000Z',
     });
-    expect(mergeRow(l, remote).deleted_at).toBe('2026-09-11T00:00:00.000Z');
+    expect(mergeRow(l, remote)!.deleted_at).toBe('2026-09-11T00:00:00.000Z');
   });
 
   it('keeps a local tombstone that is newer than the remote row', () => {
@@ -2811,7 +2811,7 @@ describe('mergeRow', () => {
       deleted_at: '2026-09-12T00:00:00.000Z',
     });
     const remote = row('2026-09-11T00:00:00.000Z');
-    expect(mergeRow(l, remote).deleted_at).toBe('2026-09-12T00:00:00.000Z');
+    expect(mergeRow(l, remote)!.deleted_at).toBe('2026-09-12T00:00:00.000Z');
   });
 
   it('returns undefined when both sides are missing', () => {
@@ -2882,7 +2882,7 @@ git commit -m "feat: add last-write-wins row merge"
 
 ```ts
 import 'fake-indexeddb/auto';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { db } from '../db/schema';
 import { insertRow, softDeleteRow } from '../db/repo';
 import { pushTable, stripLocal, type PushClient } from './push';
