@@ -58,6 +58,25 @@ export function daysBetween(a: ISODate, b: ISODate): number {
   return Math.round(ms / 86_400_000);
 }
 
+let lastIssuedMs = 0;
+
+/**
+ * Wall-clock time, forced to strictly increase within this JS context.
+ *
+ * `updated_at` is not just a timestamp — it is the version token that
+ * last-write-wins compares and that the push path uses to detect a row
+ * edited mid-flight. `Date.now()` has 1ms resolution, so two writes in the
+ * same millisecond produce an identical token: the merge reads them as a tie
+ * and drops one, and the dirty-flag guard cannot tell them apart. Advancing
+ * by at least 1ms per call makes every local write distinguishable and
+ * correctly ordered.
+ *
+ * Drift is bounded by the number of writes in a burst — seeding the library
+ * is ~51 calls, so ~51ms. A backward system-clock jump is deliberately not
+ * followed, which is what last-write-wins wants.
+ */
 export function nowISO(): string {
-  return new Date().toISOString();
+  const ms = Math.max(Date.now(), lastIssuedMs + 1);
+  lastIssuedMs = ms;
+  return new Date(ms).toISOString();
 }

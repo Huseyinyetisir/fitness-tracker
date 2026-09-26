@@ -7,6 +7,7 @@ import {
   eachDateInRange,
   isWeekdayDate,
   daysBetween,
+  nowISO,
 } from './time';
 
 describe('toISODate', () => {
@@ -86,5 +87,21 @@ describe('daysBetween', () => {
 
   it('is negative when the second date is earlier', () => {
     expect(daysBetween('2026-09-24', '2026-09-21')).toBe(-3);
+  });
+});
+
+describe('nowISO', () => {
+  it('strictly increases even when called within one millisecond', () => {
+    const stamps = Array.from({ length: 50 }, () => nowISO());
+    const sorted = [...stamps].sort();
+    expect(stamps).toEqual(sorted);
+    expect(new Set(stamps).size).toBe(stamps.length);
+  });
+
+  it('stays anchored to wall-clock time', () => {
+    const before = Date.now();
+    const t = Date.parse(nowISO());
+    expect(t).toBeGreaterThanOrEqual(before);
+    expect(t).toBeLessThan(before + 5000);
   });
 });
