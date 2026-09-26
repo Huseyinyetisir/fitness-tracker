@@ -61,7 +61,9 @@ Two timestamps, not one. If a single client-set timestamp served as both the LWW
 
 ### Library and planning
 
-- **`exercises`** — `name`, `muscle_group`, `modality` (`strength` | `cardio`), `run_type` (`easy` | `tempo` | `intervals` | `long`, cardio only), `default_sets`, `default_reps`, `default_weight_kg`, `default_duration_s`, `default_distance_km`, `sort_order`. Seeded with ~40 strength exercises plus the four run types.
+- **`exercises`** — `name`, `muscle_group`, `modality` (`strength` | `cardio`), `run_type` (`easy` | `tempo` | `intervals` | `long`, cardio only), `default_sets`, `default_reps`, `default_weight_kg`, `default_duration_s`, `default_distance_km`, `sort_order`. Seeded with 47 strength exercises plus the four run types.
+
+  Seeding runs only after a sync has completed, never merely because the local table is empty. An empty table is also what a fresh install, cleared storage, or a second device looks like; seeding then mints new UUIDs for exercises that already exist on the server, and since rows are soft-delete-only those duplicates can never be cleanly removed.
 - **`workout_templates`** — `name`, `notes`. A run day is a template containing a single cardio item, which keeps planning uniform across strength and running.
 - **`workout_template_items`** — `template_id`, `exercise_id`, `position`, `target_sets`, `target_reps`, `target_weight_kg`, `target_duration_s`, `target_distance_km`, `target_rpe`, `rest_seconds`, `notes`.
 - **`week_plans`** — `name` (a training block), `active_from`.
@@ -87,7 +89,7 @@ Planned and logged sessions share one table. This is what makes adherence honest
 Never pushed to Supabase:
 
 - **`sync_meta`** — per-table pull watermark, last successful sync time, last error.
-- `_dirty` is an indexed field on every synced Dexie table, stripped before push.
+- `_dirty` (`0 | 1`) and `_deleted` (`0 | 1`) are indexed on every synced Dexie table, both stripped before push. They are `0 | 1` rather than booleans because IndexedDB cannot index a boolean and cannot key on `null` — so `deleted_at` itself is unqueryable, and `_deleted` mirrors it.
 
 ## 5. Supabase schema
 
@@ -124,7 +126,7 @@ Foreign keys between app tables are declared **without** `on delete cascade`. So
 
 **Indexes:** `(user_id, server_updated_at)` on every table, for the pull query. Additionally `(user_id, date)` on `sessions` and `body_metrics`, and `(session_exercise_id)` on `set_entries`.
 
-Migrations are numbered SQL files in `/supabase/migrations`, applied by hand in the Supabase SQL editor. No CLI link, no account upgrade, nothing that asks for a card.
+Migrations are numbered SQL files in `/supabase/migrations`, applied by hand in the Supabase SQL editor, in order: `0001_init.sql`, `0002_rls.sql`, `0003_reject_stale_writes.sql`. No CLI link, no account upgrade, nothing that asks for a card.
 
 ## 6. Row Level Security
 
@@ -157,7 +159,7 @@ The `delete` policy exists solely for the Settings → "Delete all data" action.
 1. Collect rows where `_dirty = 1`, grouped by table.
 2. Upsert them in foreign-key-safe order:
    `exercises → workout_templates → workout_template_items → week_plans → week_plan_days → sessions → session_exercises → set_entries → runs → run_splits → body_metrics → user_prefs`
-3. On success, clear `_dirty` for the rows the server acknowledged.
+3. On success, clear `_dirty` — but only for rows whose `updated_at` still matches what was uploaded. A write landing during the upsert's network round trip bumps `updated_at`, and clearing it unconditionally would mark an unsent edit as synced. Sync fires on `visibilitychange`, i.e. exactly when the user returns to the app and logs a set, so this window is reachable in ordinary use.
 
 Tombstones push like any other row — a soft-deleted row is a normal update with `deleted_at` set.
 
@@ -179,16 +181,24 @@ order by server_updated_at
 mergeRow(local, remote):
   local missing           -> take remote, _dirty = 0
   remote missing          -> keep local
-  remote.updated_at >  local.updated_at  -> take remote, _dirty = 0
-  remote.updated_at <  local.updated_at  -> keep local, stays _dirty
-  remote.updated_at == local.updated_at  -> take remote, _dirty = 0
+  remote newer            -> take remote, _dirty = 0
+  local newer             -> keep local, _dirty = 1   (server is behind)
+  same instant            -> take remote, _dirty = 0
 ```
 
-The tie case resolves to the server so that repeated syncs converge rather than oscillating.
+The tie resolves to the server so repeated syncs converge rather than oscillating. The local-wins branch sets `_dirty = 1` even when the row was clean: a clean row newer than the server would otherwise never be pushed again, and the two sides would stay diverged permanently.
+
+Comparison is on parsed epoch milliseconds, not raw strings. The client writes `Date#toISOString` (`…00.000Z`) while PostgREST returns `…00+00:00`, dropping a zero fraction and using an offset rather than `Z`; those two renderings of one instant do not sort against each other.
+
+`updated_at` is not merely a timestamp — it is the version token that this comparison and the push path both depend on — so the clock producing it is forced to increase strictly within a session. At `Date.now()`'s 1 ms resolution, two writes in the same millisecond share a token and become indistinguishable to both consumers.
+
+### Server-side enforcement
+
+Push has no pre-read: it upserts every dirty row and lets the database settle ordering. Last-write-wins is therefore also enforced by a trigger, which rejects an update carrying an older `updated_at` by rewriting the row with its existing values and a fresh `server_updated_at`. Without it, a device that has been offline overwrites a newer row and that logged session is gone. Rewriting rather than skipping is deliberate: the stale pusher cleared its dirty flag on the success response, so it only learns it lost by pulling the row back — and it only pulls rows at or beyond its watermark.
 
 ### Triggers and status
 
-Sync runs on app foreground, on regaining connectivity, after a session is completed, and on the manual "sync now" button. The Settings screen and a small header indicator show one of: synced (with last-synced time), pending *n* changes, syncing, offline, or error with the message.
+Sync runs on mount, on app foreground, on regaining connectivity, after a session is completed, and on the manual "sync now" button. The lifecycle lives in an app-level hook, not in the status widget: sync must keep running on screens where that widget is not mounted, and `visibilitychange` does not fire on initial load. Re-entry is guarded by a ref rather than React state, since two events in the same tick both read the same stale value. The Settings screen and a small header indicator show one of: synced (with last-synced time), pending *n* changes, syncing, offline, or error with the message.
 
 ## 8. Calculations
 
@@ -203,7 +213,7 @@ All pure functions in `/lib`, all unit-tested.
 | Adherence | `(done + partial) / total planned` over the selected range |
 | Streak | Consecutive weekday (Mon–Fri) mornings with a session in `done` or `partial`. Weekends are neutral — they neither extend nor break it |
 | Session RPE | Mean RPE across working sets, or the run's RPE for a run session |
-| Fatigue flag | Per exercise, trailing 2 weeks vs. the prior 2 weeks: raised when mean RPE increases by ≥ 0.5 while mean top-set load is flat (≤ +1% change) |
+| Fatigue flag | Per exercise, trailing 2 weeks vs. the prior 2 weeks: raised when mean RPE increases by ≥ 0.5 while mean top-set load is flat (≤ +1% change). Never raised when the prior window's mean load is 0 — bodyweight work has no baseline, so "did load stay flat" has no answer, and treating it as flat fires on every RPE rise |
 
 Range filters throughout Progress: 4w, 12w, 6m, all.
 

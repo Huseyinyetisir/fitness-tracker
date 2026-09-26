@@ -3946,3 +3946,27 @@ Spec §9 screens beyond sign-in, §10 export/import, and §14 Android build belo
 **Type consistency:** `SyncedTableName` (defined Task 9) is used unchanged in Tasks 16, 18, 19, 20. `Local<T>` and `BaseRow` (Task 2) are used consistently throughout. `isWorkingSet` is exported from `strength.ts` (Task 4) and imported by `rpe.ts` (Task 8). `MAX_TRACKED_REPS` is exported from `strength.ts` and imported by `prs.ts` (Task 5). `epley1RM` has one signature, `(weightKg, reps)`, everywhere. `PushClient` and `PullClient` are defined once each and composed as `PushClient & PullClient` in the engine.
 
 **Placeholder scan:** no TBD, TODO, "similar to Task N", or steps without code. Every code step shows complete, runnable content.
+
+---
+
+## Post-review amendments
+
+A whole-implementation review after Task 22 found eight defects. The task code blocks above are the *as-planned* version; these commits are the corrected state. The design spec has been updated to match.
+
+| Ref | Defect | Fix |
+|---|---|---|
+| C1 | Push upserts blindly — LWW was enforced only on pull, so an older row from an offline device destroyed a newer one | `0003_reject_stale_writes.sql`: trigger rewrites the row with its existing values and a fresh `server_updated_at` when the incoming `updated_at` is older (`276990a`) |
+| C2 | A local row that won a merge kept its existing dirty flag, so an already-clean winner was never pushed and the divergence became permanent | Local-wins branch re-queues with `_dirty = 1` (`3040125`) |
+| C3 | `clearDirty` cleared by id after the network round trip, marking an edit made mid-push as synced | Clear only rows whose `updated_at` still matches what was uploaded (`b9bdf58`) |
+| — | `updated_at` is the version token both C3's guard and the merge rely on, but had 1 ms resolution, so same-millisecond writes were indistinguishable | `nowISO()` forced strictly monotonic (`637cfa8`) |
+| C4 | Seeding gated only on an empty local table, so a fresh install minted 51 duplicate UUIDs before its first pull | Seed only after a completed sync (`5f7159d`) |
+| I1 | LWW compared raw strings, but PostgREST returns `+00:00` while the client writes `.000Z` — the same instant did not tie | Compare parsed epoch milliseconds (`95351c8`) |
+| I4 | Fatigue flag forced `loadChange` to 0 when prior load was 0, so it fired on every RPE rise for bodyweight lifts | Return unflagged with a null load delta when there is no baseline (`b404307`) |
+| I5 | `deleted_at` (null) and `was_planned` (boolean) were indexed in Dexie; neither is a valid IndexedDB key, and querying them threw | Indexed `_deleted: 0 \| 1` mirror; `was_planned` index dropped (`93f0da9`) |
+| I6, I7 | `visibilitychange` does not fire on load, so nothing synced until the user backgrounded the app; the `busy` guard read stale state; the lifecycle lived in a widget that unmounts | `src/sync/useSync.ts` owns the lifecycle with a ref guard; `SyncStatus` is presentational (`5f7159d`) |
+
+### Known, deliberately deferred
+
+- **Pull is not paginated.** Supabase caps a request at 1000 rows by default. `pullTable` applies what it gets, advances the watermark and reports success, so a first sync past that ceiling is silently partial until repeated. Reachable once `set_entries` grows past a few months of logging. Fix in Plan 2 with a `.range()` loop.
+- **`epley1RM` special-cases 1 rep** to return the weight itself rather than the spec's `w × (1 + reps/30)`. That is defensible — a single *is* a 1RM, not an estimate — but it makes the scale inconsistent: a 1×105 scores below a 2×100, so a genuine single may not register as an e1RM PR. Needs a decision, not just a patch.
+- **No component tests.** `App.tsx`, `SyncStatus.tsx` and `SignIn.tsx` are untested; React Testing Library is not installed. The seeding race and C4 both lived in this layer.
