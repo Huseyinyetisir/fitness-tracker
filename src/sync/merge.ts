@@ -23,5 +23,8 @@ export function mergeRow<T extends BaseRow>(
     return { ...remoteRow, _dirty: 0 } as Local<T>;
   }
 
-  return localRow;
+  // Local wins, so the server is behind and needs this row. Re-queue it:
+  // returning it untouched would leave a clean row permanently newer than
+  // the server, and no later sync would ever push it.
+  return localRow._dirty === 1 ? localRow : { ...localRow, _dirty: 1 };
 }

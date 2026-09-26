@@ -43,6 +43,14 @@ describe('mergeRow', () => {
     expect(merged!._dirty).toBe(1);
   });
 
+  it('re-queues a clean local row that wins, so the server gets repaired', () => {
+    const l = local('2026-09-12T00:00:00.000Z', 0);
+    const remote = row('2026-09-11T00:00:00.000Z');
+    const merged = mergeRow(l, remote);
+    expect(merged!.updated_at).toBe('2026-09-12T00:00:00.000Z');
+    expect(merged!._dirty).toBe(1);
+  });
+
   it('resolves a tie to the remote row so repeated syncs converge', () => {
     const ts = '2026-09-11T00:00:00.000Z';
     const l = local(ts, 1);
