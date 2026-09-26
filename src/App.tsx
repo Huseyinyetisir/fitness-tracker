@@ -4,18 +4,24 @@ import { seedExercises } from './db/seed';
 import { useAuth, signOut } from './features/auth/useAuth';
 import SignIn from './features/auth/SignIn';
 import SyncStatus from './features/settings/SyncStatus';
+import { useSync } from './sync/useSync';
 
 export default function App() {
   const { session, loading } = useAuth();
+  const userId = session?.user.id ?? null;
+  const { status, busy, syncNow, refresh } = useSync(userId);
   const [count, setCount] = useState<number | null>(null);
 
+  // Seeding waits for a sync to have completed, so it runs off the sync
+  // status rather than off sign-in.
   useEffect(() => {
-    if (!session) return;
+    if (!userId || !status?.lastSyncedAt) return;
     (async () => {
-      await seedExercises();
-      setCount(await db.exercises.count());
+      const seeded = await seedExercises();
+      setCount(await db.exercises.where('_deleted').equals(0).count());
+      if (seeded > 0) await refresh();
     })();
-  }, [session]);
+  }, [userId, status?.lastSyncedAt, refresh]);
 
   if (loading) {
     return <main className="p-6 text-[var(--color-muted)]">Loading…</main>;
@@ -26,7 +32,7 @@ export default function App() {
   return (
     <main className="p-6 space-y-4">
       <h1 className="text-2xl font-semibold">Fit Tracker</h1>
-      <SyncStatus userId={session.user.id} />
+      <SyncStatus status={status} busy={busy} onSync={() => void syncNow()} />
       <p className="text-[var(--color-muted)]">
         Exercise library: <span className="text-[var(--color-text)]">{count ?? '…'}</span>
       </p>

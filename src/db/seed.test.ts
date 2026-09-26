@@ -3,9 +3,19 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { db } from './schema';
 import { seedExercises, SEED_EXERCISES } from './seed';
 
+async function markSynced() {
+  await db.sync_meta.put({
+    table: 'exercises',
+    watermark: null,
+    last_synced_at: '2026-09-22T06:00:00.000Z',
+    last_error: null,
+  });
+}
+
 beforeEach(async () => {
   await db.delete();
   await db.open();
+  await markSynced();
 });
 
 describe('seedExercises', () => {
@@ -52,5 +62,12 @@ describe('seedExercises', () => {
   it('has no duplicate names', () => {
     const names = SEED_EXERCISES.map((e) => e.name);
     expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('does not seed before the first sync has completed', async () => {
+    await db.sync_meta.delete('exercises');
+    const n = await seedExercises();
+    expect(n).toBe(0);
+    expect(await db.exercises.count()).toBe(0);
   });
 });
