@@ -53,7 +53,8 @@ Files that change together live together. Each file has one responsibility.
 | `src/sync/merge.ts` | `mergeRow` — the pure last-write-wins decision |
 | `src/sync/push.ts` | Collect dirty rows, upsert, clear flags |
 | `src/sync/pull.ts` | Watermark query, apply merges, advance watermark |
-| `src/sync/engine.ts` | Orchestration, triggers, status broadcasting |
+| `src/sync/engine.ts` | Orchestration, triggers, status broadcasting — takes its client as a parameter, imports no credentials |
+| `src/sync/supabaseSyncClient.ts` | The concrete Supabase-backed push/pull adapter |
 | `src/features/settings/SyncStatus.tsx` | Status indicator and "sync now" button |
 
 ---
@@ -3459,7 +3460,6 @@ import type { UUID } from '../types/domain';
 import { db } from '../db/schema';
 import { dirtyRows } from '../db/repo';
 import { nowISO } from '../lib/time';
-import { supabase } from '../supabase/client';
 import { SYNCED_TABLES } from './tables';
 import { pushTable, type PushClient } from './push';
 import { pullTable, type PullClient } from './pull';
@@ -3515,7 +3515,32 @@ export async function syncAll(
   }
 }
 
-/** The real Supabase-backed client. */
+export async function currentStatus(): Promise<SyncStatus> {
+  const meta = await db.sync_meta.get('exercises');
+  return {
+    phase: meta?.last_error ? 'error' : 'idle',
+    pendingCount: await pendingCount(),
+    lastSyncedAt: meta?.last_synced_at ?? null,
+    error: meta?.last_error ?? null,
+  };
+}
+```
+
+- [ ] **Step 4: Write `src/sync/supabaseSyncClient.ts`**
+
+```ts
+import { supabase } from '../supabase/client';
+import type { PushClient } from './push';
+import type { PullClient } from './pull';
+
+/**
+ * The real Supabase-backed sync client.
+ *
+ * Deliberately separate from engine.ts. `../supabase/client` throws at module
+ * load when VITE_SUPABASE_* are absent, so importing it from the engine would
+ * make the sync tests depend on a gitignored .env file. The engine takes its
+ * client as a parameter; only the UI reaches for this concrete one.
+ */
 export const supabaseSyncClient: PushClient & PullClient = {
   async upsert(table, rows) {
     const { error } = await supabase.from(table).upsert(rows, { onConflict: 'id' });
@@ -3532,27 +3557,17 @@ export const supabaseSyncClient: PushClient & PullClient = {
     };
   },
 };
-
-export async function currentStatus(): Promise<SyncStatus> {
-  const meta = await db.sync_meta.get('exercises');
-  return {
-    phase: meta?.last_error ? 'error' : 'idle',
-    pendingCount: await pendingCount(),
-    lastSyncedAt: meta?.last_synced_at ?? null,
-    error: meta?.last_error ?? null,
-  };
-}
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 5: Run the test to verify it passes**
 
 Run: `npx vitest run src/sync/engine.test.ts`
 Expected: PASS, 7 tests
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/sync/engine.ts src/sync/engine.test.ts
+git add src/sync/engine.ts src/sync/supabaseSyncClient.ts src/sync/engine.test.ts
 git commit -m "feat: add sync engine with push-then-pull ordering"
 ```
 
@@ -3725,7 +3740,8 @@ git commit -m "test: add sync round-trip integration tests"
 
 ```tsx
 import { useCallback, useEffect, useState } from 'react';
-import { currentStatus, syncAll, supabaseSyncClient } from '../../sync/engine';
+import { currentStatus, syncAll } from '../../sync/engine';
+import { supabaseSyncClient } from '../../sync/supabaseSyncClient';
 import type { SyncStatus as Status } from '../../sync/types';
 
 export default function SyncStatus({ userId }: { userId: string }) {
