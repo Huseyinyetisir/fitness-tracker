@@ -1,4 +1,4 @@
-import type { BaseRow, Local } from '../types/domain';
+import type { BaseRow, ISODateTime, Local } from '../types/domain';
 
 /**
  * Row-level last-write-wins, comparing the client-owned `updated_at`.
@@ -10,7 +10,21 @@ import type { BaseRow, Local } from '../types/domain';
  * Tombstones need no special case — a soft-deleted row is an ordinary update
  * with `deleted_at` set, so the same comparison carries it in either
  * direction.
+ *
+ * Timestamps are compared as instants, not strings — see `instant()` below.
  */
+
+/**
+ * Timestamps arrive in two renderings: the client writes Date#toISOString
+ * ('…00.000Z') while PostgREST returns '…00+00:00', dropping a zero fraction
+ * and using an offset rather than Z. Those strings do not sort against each
+ * other, so the same instant compared as text resolves as local-newer and the
+ * documented tie rule never fires. Compare epoch milliseconds instead.
+ */
+function instant(ts: ISODateTime): number {
+  return Date.parse(ts);
+}
+
 export function mergeRow<T extends BaseRow>(
   localRow: Local<T> | undefined,
   remoteRow: T | undefined,
@@ -19,7 +33,7 @@ export function mergeRow<T extends BaseRow>(
   if (!localRow) return { ...(remoteRow as T), _dirty: 0 } as Local<T>;
   if (!remoteRow) return localRow;
 
-  if (remoteRow.updated_at >= localRow.updated_at) {
+  if (instant(remoteRow.updated_at) >= instant(localRow.updated_at)) {
     return { ...remoteRow, _dirty: 0 } as Local<T>;
   }
 

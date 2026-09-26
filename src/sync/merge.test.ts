@@ -79,4 +79,19 @@ describe('mergeRow', () => {
   it('returns undefined when both sides are missing', () => {
     expect(mergeRow(undefined, undefined)).toBeUndefined();
   });
+
+  it('treats the Postgres and JS renderings of one instant as a tie', () => {
+    // PostgREST omits the fraction when it is zero and uses +00:00, not Z.
+    const l = local('2026-09-11T00:00:00.000Z', 1);
+    const remote = row('2026-09-11T00:00:00+00:00');
+    expect(mergeRow(l, remote)!._dirty).toBe(0);
+  });
+
+  it('compares sub-second precision across both renderings', () => {
+    const l = local('2026-09-11T00:00:00.500Z', 1);
+    const remote = row('2026-09-11T00:00:00.250000+00:00');
+    // Local is genuinely 250ms newer, so it wins and stays queued.
+    expect(mergeRow(l, remote)!._dirty).toBe(1);
+    expect(mergeRow(l, remote)!.updated_at).toBe('2026-09-11T00:00:00.500Z');
+  });
 });
