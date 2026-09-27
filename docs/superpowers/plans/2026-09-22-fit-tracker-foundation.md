@@ -3955,15 +3955,15 @@ A whole-implementation review after Task 22 found eight defects. The task code b
 
 | Ref | Defect | Fix |
 |---|---|---|
-| C1 | Push upserts blindly — LWW was enforced only on pull, so an older row from an offline device destroyed a newer one | `0003_reject_stale_writes.sql`: trigger rewrites the row with its existing values and a fresh `server_updated_at` when the incoming `updated_at` is older (`276990a`) |
-| C2 | A local row that won a merge kept its existing dirty flag, so an already-clean winner was never pushed and the divergence became permanent | Local-wins branch re-queues with `_dirty = 1` (`3040125`) |
-| C3 | `clearDirty` cleared by id after the network round trip, marking an edit made mid-push as synced | Clear only rows whose `updated_at` still matches what was uploaded (`b9bdf58`) |
-| — | `updated_at` is the version token both C3's guard and the merge rely on, but had 1 ms resolution, so same-millisecond writes were indistinguishable | `nowISO()` forced strictly monotonic (`637cfa8`) |
-| C4 | Seeding gated only on an empty local table, so a fresh install minted 51 duplicate UUIDs before its first pull | Seed only after a completed sync (`5f7159d`) |
-| I1 | LWW compared raw strings, but PostgREST returns `+00:00` while the client writes `.000Z` — the same instant did not tie | Compare parsed epoch milliseconds (`95351c8`) |
-| I4 | Fatigue flag forced `loadChange` to 0 when prior load was 0, so it fired on every RPE rise for bodyweight lifts | Return unflagged with a null load delta when there is no baseline (`b404307`) |
-| I5 | `deleted_at` (null) and `was_planned` (boolean) were indexed in Dexie; neither is a valid IndexedDB key, and querying them threw | Indexed `_deleted: 0 \| 1` mirror; `was_planned` index dropped (`93f0da9`) |
-| I6, I7 | `visibilitychange` does not fire on load, so nothing synced until the user backgrounded the app; the `busy` guard read stale state; the lifecycle lived in a widget that unmounts | `src/sync/useSync.ts` owns the lifecycle with a ref guard; `SyncStatus` is presentational (`5f7159d`) |
+| C1 | Push upserts blindly — LWW was enforced only on pull, so an older row from an offline device destroyed a newer one | `0003_reject_stale_writes.sql`: trigger rewrites the row with its existing values and a fresh `server_updated_at` when the incoming `updated_at` is older (`4bccc8e`) |
+| C2 | A local row that won a merge kept its existing dirty flag, so an already-clean winner was never pushed and the divergence became permanent | Local-wins branch re-queues with `_dirty = 1` (`549ae14`) |
+| C3 | `clearDirty` cleared by id after the network round trip, marking an edit made mid-push as synced | Clear only rows whose `updated_at` still matches what was uploaded (`5752d6f`) |
+| — | `updated_at` is the version token both C3's guard and the merge rely on, but had 1 ms resolution, so same-millisecond writes were indistinguishable | `nowISO()` forced strictly monotonic (`6324d5f`) |
+| C4 | Seeding gated only on an empty local table, so a fresh install minted 51 duplicate UUIDs before its first pull | Seed only after a completed sync (`a338dbd`) |
+| I1 | LWW compared raw strings, but PostgREST returns `+00:00` while the client writes `.000Z` — the same instant did not tie | Compare parsed epoch milliseconds (`623aaf4`) |
+| I4 | Fatigue flag forced `loadChange` to 0 when prior load was 0, so it fired on every RPE rise for bodyweight lifts | Return unflagged with a null load delta when there is no baseline (`6c70909`) |
+| I5 | `deleted_at` (null) and `was_planned` (boolean) were indexed in Dexie; neither is a valid IndexedDB key, and querying them threw | Indexed `_deleted: 0 \| 1` mirror; `was_planned` index dropped (`6098d85`) |
+| I6, I7 | `visibilitychange` does not fire on load, so nothing synced until the user backgrounded the app; the `busy` guard read stale state; the lifecycle lived in a widget that unmounts | `src/sync/useSync.ts` owns the lifecycle with a ref guard; `SyncStatus` is presentational (`a338dbd`) |
 
 ### Known, deliberately deferred
 
