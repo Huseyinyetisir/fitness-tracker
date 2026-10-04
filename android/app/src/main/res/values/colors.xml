@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The web app's background colour (color-bg in index.css). Shows behind the WebView and the system bars, and on the splash screen. -->
+    <color name="app_background">#0B0F14</color>
+</resources>
