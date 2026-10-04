@@ -17,9 +17,13 @@ const REQUEST_TIMEOUT_MS = 30_000;
  * on it forever. Aborting fails that sync instead; the next trigger retries.
  */
 const fetchWithTimeout: typeof fetch = (input, init) => {
+  // AbortSignal.timeout needs Chromium 103 and AbortSignal.any 116. An older
+  // Android WebView goes without the timeout rather than failing every request.
+  if (typeof AbortSignal.timeout !== 'function') return fetch(input, init);
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
-  return fetch(input, { ...init, signal });
+  if (!init?.signal) return fetch(input, { ...init, signal: timeout });
+  if (typeof AbortSignal.any !== 'function') return fetch(input, init);
+  return fetch(input, { ...init, signal: AbortSignal.any([init.signal, timeout]) });
 };
 
 export const supabase = createClient(url, anonKey, {
