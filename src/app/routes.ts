@@ -1,6 +1,16 @@
+import { isRangeKey, type RangeKey } from '../lib/ranges';
 import type { ISODate, SessionKind, UUID } from '../types/domain';
 
 export type Tab = 'today' | 'plan' | 'progress' | 'log' | 'settings';
+
+/** The Progress tab's views. Strength is the default. */
+export type ProgressView = 'strength' | 'exercises' | 'rpe' | 'running' | 'body';
+
+export const PROGRESS_VIEWS: readonly ProgressView[] = ['strength', 'exercises', 'rpe', 'running', 'body'];
+
+function isProgressView(value: string | null): value is ProgressView {
+  return value !== null && (PROGRESS_VIEWS as readonly string[]).includes(value);
+}
 
 export type Route =
   | { name: 'today' }
@@ -13,7 +23,9 @@ export type Route =
   | { name: 'session'; id: UUID; from?: 'log' }
   | { name: 'run'; id: UUID; from?: 'log' }
   | { name: 'run-new'; exerciseId: UUID; date: ISODate }
-  | { name: 'progress' }
+  | { name: 'progress'; view?: ProgressView; range?: RangeKey }
+  | { name: 'progress-exercise'; id: UUID; range?: RangeKey }
+  | { name: 'body'; id: UUID | 'new' }
   | { name: 'log' }
   | { name: 'settings' };
 
@@ -56,8 +68,15 @@ export function parseRoute(hash: string): Route {
       if (!id) return { name: 'today' };
       return fromLog ? { name: 'run', id, from: 'log' } : { name: 'run', id };
     }
-    case 'progress':
-      return { name: 'progress' };
+    case 'progress': {
+      const range = params.get('range');
+      const withRange = isRangeKey(range) ? { range } : {};
+      if (id === 'exercise' && parts[2]) return { name: 'progress-exercise', id: parts[2], ...withRange };
+      const view = params.get('view');
+      return { name: 'progress', ...(isProgressView(view) ? { view } : {}), ...withRange };
+    }
+    case 'body':
+      return id ? { name: 'body', id } : { name: 'progress', view: 'body' };
     case 'log':
       return { name: 'log' };
     case 'settings':
@@ -91,12 +110,24 @@ export function routeHref(route: Route): string {
     case 'run-new':
       return `#/run/new?exercise=${encodeURIComponent(route.exerciseId)}&date=${route.date}`;
     case 'progress':
-      return '#/progress';
+      return `#/progress${query({ view: route.view, range: route.range })}`;
+    case 'progress-exercise':
+      return `#/progress/exercise/${encodeURIComponent(route.id)}${query({ range: route.range })}`;
+    case 'body':
+      return `#/body/${encodeURIComponent(route.id)}`;
     case 'log':
       return '#/log';
     case 'settings':
       return '#/settings';
   }
+}
+
+/** '?a=1&b=2' from the defined values, or '' when there are none. */
+function query(values: Record<string, string | undefined>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) if (value !== undefined) params.set(key, value);
+  const text = params.toString();
+  return text ? `?${text}` : '';
 }
 
 /** The screen that opens a session: the run logger for a pure run, the set logger otherwise. */
@@ -122,6 +153,8 @@ export function tabOf(route: Route): Tab {
     case 'today':
       return 'today';
     case 'progress':
+    case 'progress-exercise':
+    case 'body':
       return 'progress';
     case 'log':
       return 'log';

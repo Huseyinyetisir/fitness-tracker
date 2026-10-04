@@ -17,6 +17,13 @@ const ROUND_TRIP: Route[] = [
   { name: 'run', id: 'r1', from: 'log' },
   { name: 'run-new', exerciseId: 'e9', date: '2026-10-05' },
   { name: 'progress' },
+  { name: 'progress', view: 'rpe' },
+  { name: 'progress', view: 'running', range: '4w' },
+  { name: 'progress', range: 'all' },
+  { name: 'progress-exercise', id: 'e1' },
+  { name: 'progress-exercise', id: 'e1', range: '6m' },
+  { name: 'body', id: 'new' },
+  { name: 'body', id: 'b1' },
   { name: 'log' },
   { name: 'settings' },
 ];
@@ -67,5 +74,20 @@ describe('tabOf', () => {
     expect(tabOf({ name: 'session', id: 's1' })).toBe('today');
     expect(tabOf({ name: 'session', id: 's1', from: 'log' })).toBe('log');
     expect(tabOf({ name: 'run', id: 'r1', from: 'log' })).toBe('log');
+  });
+});
+
+describe('progress routes', () => {
+  it('ignores an unknown view or range', () => {
+    expect(parseRoute('#/progress?view=charts&range=1y')).toEqual({ name: 'progress' });
+  });
+
+  it('treats a bare body path as the Body view', () => {
+    expect(parseRoute('#/body')).toEqual({ name: 'progress', view: 'body' });
+  });
+
+  it('puts exercise detail and the body form under Progress', () => {
+    expect(tabOf({ name: 'progress-exercise', id: 'e1' })).toBe('progress');
+    expect(tabOf({ name: 'body', id: 'new' })).toBe('progress');
   });
 });
