@@ -18,6 +18,7 @@ const CHANNEL = 'rest-timer';
 const NOTIFICATION_ID = 1;
 
 let ready: Promise<boolean> | null = null;
+let asked = false;
 
 /**
  * Asks for notification permission (once, on first use) and creates the
@@ -25,9 +26,22 @@ let ready: Promise<boolean> | null = null;
  */
 export function prepareRestAlert(): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return Promise.resolve(false);
-  ready ??= (async () => {
+  ready ??= prepare().then((ok) => {
+    // Only a grant is kept. The user can allow notifications later in the
+    // system settings, and a denied permission is re-checked without prompting.
+    if (!ok) ready = null;
+    return ok;
+  });
+  return ready;
+}
+
+function prepare(): Promise<boolean> {
+  return (async () => {
     let { display } = await LocalNotifications.checkPermissions();
-    if (display === 'prompt' || display === 'prompt-with-rationale') {
+    // After a refusal Android reports 'prompt-with-rationale'; asking again
+    // on every rest would nag, so this process asks only once.
+    if (!asked && (display === 'prompt' || display === 'prompt-with-rationale')) {
+      asked = true;
       ({ display } = await LocalNotifications.requestPermissions());
     }
     if (display !== 'granted') return false;
@@ -41,7 +55,6 @@ export function prepareRestAlert(): Promise<boolean> {
     });
     return true;
   })().catch(() => false);
-  return ready;
 }
 
 async function arm(endsAt: number): Promise<void> {
