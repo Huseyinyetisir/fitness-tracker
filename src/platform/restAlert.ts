@@ -83,17 +83,35 @@ async function disarm(): Promise<void> {
   await LocalNotifications.removeAllDeliveredNotifications();
 }
 
+let queue: Promise<void> = Promise.resolve();
+
+/**
+ * Runs scheduling and cancelling strictly in order. Arming awaits permission
+ * and settings first, so a quick background-and-back could otherwise schedule
+ * the alert after the cancel that was meant to follow it.
+ */
+function inOrder(step: () => Promise<void>): void {
+  queue = queue.then(step).catch(() => undefined);
+}
+
 /** Keeps the background alert in step with the rest timer and the app's foreground state. */
 export function useRestAlert(endsAt: number | null, enabled: boolean): void {
+  // Mounting happens in the foreground, where the in-app buzz is the alert. A
+  // notification still scheduled by a previous process — the app was killed
+  // mid-rest — would fire a second time, so it goes.
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) inOrder(disarm);
+  }, []);
+
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || endsAt === null || !enabled) return;
     const listener = App.addListener('appStateChange', ({ isActive }) => {
-      if (isActive) void disarm().catch(() => undefined);
-      else if (endsAt > Date.now()) void arm(endsAt).catch(() => undefined);
+      if (isActive) inOrder(disarm);
+      else if (endsAt > Date.now()) inOrder(() => arm(endsAt));
     });
     return () => {
       void listener.then((l) => l.remove());
-      void disarm().catch(() => undefined);
+      inOrder(disarm);
     };
   }, [endsAt, enabled]);
 }
