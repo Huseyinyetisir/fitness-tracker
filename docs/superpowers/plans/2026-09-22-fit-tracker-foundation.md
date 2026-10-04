@@ -3970,3 +3970,18 @@ A whole-implementation review after Task 22 found eight defects. The task code b
 
 - **`epley1RM` special-cases 1 rep** to return the weight itself rather than the spec's `w × (1 + reps/30)`. That is defensible — a single *is* a 1RM, not an estimate — but it makes the scale inconsistent: a 1×105 scores below a 2×100, so a genuine single may not register as an e1RM PR. Needs a decision, not just a patch.
 - **No component tests.** `App.tsx`, `SyncStatus.tsx` and `SignIn.tsx` are untested; React Testing Library is not installed. The seeding race and C4 both lived in this layer.
+
+## Runtime verification against the real Supabase project (2026-10-04)
+
+| Check | Result |
+|---|---|
+| Anonymous key against `exercises`, `sessions`, `set_entries` | `401 permission denied` — tables exist, `anon` has no grants |
+| Sign-in, then first sync on an empty account | Sync completed first, then the library seeded: 51 exercises |
+| Push | All 51 stamped by the server; real stamps arrive as `…947776+00:00`, the format the I1 fix exists for |
+| Offline write (network forced to fail) | Row saved locally, stays queued, sync reports the error |
+| Reconnect (`online` event) | Synced automatically; row on the server ~1 s later |
+| Wipe IndexedDB, reload | 52 rows restored, 0 duplicates, nothing queued — the C4 scenario |
+| Stale update sent straight to the server | Rejected by `0003`, `server_updated_at` refreshed; a newer update still accepted |
+| Soft delete | Tombstone reached the server |
+
+Found only by running it, then fixed: freshly seeded rows waited for the next trigger instead of pushing (`a9ac820`), and twelve sequential pulls made every sync take ~7 s — now concurrent, 0.5–1 s (`9e93127`).
