@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { currentStatus, syncAll } from './engine';
+import { liveQuery } from 'dexie';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { currentStatus, pendingCount, syncAll } from './engine';
 import { SyncLock } from './lock';
 import { supabaseSyncClient } from './supabaseSyncClient';
 import type { SyncStatus } from './types';
@@ -15,6 +16,7 @@ export function useSync(userId: string | null) {
   const [status, setStatus] = useState<SyncStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [lock] = useState(() => new SyncLock());
+  const [livePending, setLivePending] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
     setStatus(await currentStatus());
@@ -74,5 +76,20 @@ export function useSync(userId: string | null) {
     };
   }, [userId, syncNow, refresh]);
 
-  return { status, busy, syncNow, refresh, exclusive };
+  // Local writes never pass through this hook, so without a live query the
+  // count would only move on a sync and could say "Synced" over unsent edits.
+  useEffect(() => {
+    const subscription = liveQuery(pendingCount).subscribe({
+      next: setLivePending,
+      error: (err) => console.error('pending count failed', err),
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const liveStatus = useMemo(
+    () => (status && livePending !== null ? { ...status, pendingCount: livePending } : status),
+    [status, livePending],
+  );
+
+  return { status: liveStatus, busy, syncNow, refresh, exclusive };
 }

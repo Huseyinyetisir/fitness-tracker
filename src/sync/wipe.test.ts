@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../db/schema';
 import { markSynced, resetDb } from '../test/fixtures';
 import { bodyRow, sessionRow } from '../test/rows';
-import { clearLocalData, wipeAccount, type WipeClient } from './wipe';
+import { clearLocalData, clearLocalDataUnlessPending, wipeAccount, type WipeClient } from './wipe';
 
 function fakeClient(failOn?: string): WipeClient & { calls: string[] } {
   const calls: string[] = [];
@@ -49,5 +49,22 @@ describe('wipe', () => {
     await clearLocalData();
     expect(await db.sessions.count()).toBe(0);
     expect(await db.sync_meta.count()).toBe(0);
+  });
+
+  it('refuses to clear for signing out while changes are unsent, and says how many', async () => {
+    await db.sessions.put({ ...sessionRow('s2'), _dirty: 1 });
+    await db.body_metrics.put({ ...bodyRow('b2', '2026-10-02'), _dirty: 1 });
+
+    expect(await clearLocalDataUnlessPending(false)).toBe(2);
+    expect(await db.sessions.count()).toBe(2);
+  });
+
+  it('clears for signing out when nothing is unsent, or when told to anyway', async () => {
+    expect(await clearLocalDataUnlessPending(false)).toBe(0);
+    expect(await db.sessions.count()).toBe(0);
+
+    await db.sessions.put({ ...sessionRow('s3'), _dirty: 1 });
+    expect(await clearLocalDataUnlessPending(true)).toBe(0);
+    expect(await db.sessions.count()).toBe(0);
   });
 });

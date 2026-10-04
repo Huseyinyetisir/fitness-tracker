@@ -1,5 +1,6 @@
 import { db } from '../db/schema';
 import type { UUID } from '../types/domain';
+import { pendingCount } from './engine';
 import { SYNCED_TABLES } from './tables';
 
 /** The slice of the Supabase client a wipe needs. Narrow for testability. */
@@ -11,6 +12,24 @@ export interface WipeClient {
 export async function clearLocalData(): Promise<void> {
   await db.transaction('rw', db.tables, async () => {
     for (const table of db.tables) await table.clear();
+  });
+}
+
+/**
+ * Clears the device for signing out, unless it holds changes the server has
+ * not seen and `force` is false. Returns how many such changes there are, so
+ * the caller can warn — counted here rather than taken from the sync status,
+ * which can lag behind a local write, and in the same transaction as the
+ * clear, so no write lands between the two.
+ */
+export async function clearLocalDataUnlessPending(force: boolean): Promise<number> {
+  return db.transaction('rw', db.tables, async () => {
+    if (!force) {
+      const pending = await pendingCount();
+      if (pending > 0) return pending;
+    }
+    await clearLocalData();
+    return 0;
   });
 }
 

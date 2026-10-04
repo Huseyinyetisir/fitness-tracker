@@ -4,29 +4,41 @@ import { useSingleFlight } from '../../app/useSingleFlight';
 import Button from '../../components/Button';
 import ConfirmPhrase from '../../components/ConfirmPhrase';
 import { supabaseSyncClient } from '../../sync/supabaseSyncClient';
-import { clearLocalData, wipeAccount } from '../../sync/wipe';
+import { clearLocalDataUnlessPending, wipeAccount } from '../../sync/wipe';
 import { signOut } from '../auth/useAuth';
 
 type Panel = 'none' | 'sign-out' | 'delete';
 
 export default function AccountSection() {
-  const { userId, syncStatus, syncBusy, exclusive, requestSync } = useApp();
+  const { userId, syncBusy, exclusive, requestSync } = useApp();
   const { busy, run } = useSingleFlight();
   const [panel, setPanel] = useState<Panel>('none');
   const [error, setError] = useState<string | null>(null);
-  const pending = syncStatus?.pendingCount ?? 0;
+  const [pending, setPending] = useState(0);
 
   /**
    * Signing out empties this device. Rows left behind would otherwise be
-   * pushed under whichever account signs in next.
+   * pushed under whichever account signs in next. Unsent changes are counted
+   * inside the lock, so a sync cannot change them between the check and the clear.
    */
-  const signOutAndClear = () =>
-    run(() =>
-      exclusive(async () => {
-        await clearLocalData();
-        await signOut();
-      }),
-    );
+  const signOutAndClear = (force: boolean) =>
+    run(async () => {
+      const unsent = await exclusive(async () => {
+        const count = await clearLocalDataUnlessPending(force);
+        if (count === 0) await signOut();
+        return count;
+      });
+      if (unsent > 0) {
+        setPending(unsent);
+        setPanel('sign-out');
+      }
+    });
+
+  // Closing the panel means the next Sign out counts again after this sync.
+  const syncInstead = () => {
+    requestSync();
+    setPanel('none');
+  };
 
   const deleteEverything = () =>
     run(async () => {
@@ -56,10 +68,10 @@ export default function AccountSection() {
             server yet. Signing out removes this device's copy, so {pending === 1 ? 'it' : 'they'} would be lost.
           </p>
           <div className="grid grid-cols-2 gap-2">
-            <Button disabled={busy || syncBusy} onClick={requestSync}>
+            <Button disabled={busy || syncBusy} onClick={syncInstead}>
               Sync now
             </Button>
-            <Button variant="danger" disabled={busy} onClick={() => void signOutAndClear()}>
+            <Button variant="danger" disabled={busy} onClick={() => void signOutAndClear(true)}>
               Sign out anyway
             </Button>
           </div>
@@ -68,7 +80,7 @@ export default function AccountSection() {
           </Button>
         </div>
       ) : (
-        <Button block disabled={busy} onClick={() => (pending > 0 ? setPanel('sign-out') : void signOutAndClear())}>
+        <Button block disabled={busy} onClick={() => void signOutAndClear(false)}>
           Sign out
         </Button>
       )}

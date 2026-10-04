@@ -1,16 +1,16 @@
 import type { UUID } from '../types/domain';
 import { db } from '../db/schema';
-import { dirtyRows } from '../db/repo';
 import { nowISO } from '../lib/time';
 import { SYNCED_TABLES } from './tables';
 import { pushTable, type PushClient } from './push';
 import { pullTable, type PullClient } from './pull';
 import type { SyncResult, SyncStatus } from './types';
 
+/** Counts through the index rather than loading rows: the app re-runs this on every local write. */
 export async function pendingCount(): Promise<number> {
   let total = 0;
   for (const name of SYNCED_TABLES) {
-    total += (await dirtyRows(name)).length;
+    total += await db.table(name).where('_dirty').equals(1).count();
   }
   return total;
 }
