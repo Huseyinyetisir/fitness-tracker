@@ -80,3 +80,26 @@ export function nowISO(): string {
   lastIssuedMs = ms;
   return new Date(ms).toISOString();
 }
+
+/**
+ * System writes — defaults and rows the app derives from the plan — are
+ * stamped fifty years in the past. Last-write-wins then ranks every genuine
+ * user edit, on any device, above any system write, while system writes still
+ * order correctly among themselves.
+ */
+const SYSTEM_OFFSET_MS = 50 * 365.25 * 24 * 60 * 60 * 1000;
+/** System timestamps fall before this instant and real ones after it, until 2050. */
+const SYSTEM_BOUNDARY_MS = Date.UTC(2000, 0, 1);
+
+let lastSystemMs = 0;
+
+/** Like nowISO(), strictly increasing, but in the system-write range. */
+export function systemISO(): string {
+  const ms = Math.max(Date.now() - SYSTEM_OFFSET_MS, lastSystemMs + 1);
+  lastSystemMs = ms;
+  return new Date(ms).toISOString();
+}
+
+export function isSystemTimestamp(ts: string): boolean {
+  return Date.parse(ts) < SYSTEM_BOUNDARY_MS;
+}

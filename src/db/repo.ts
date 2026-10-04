@@ -1,9 +1,26 @@
 import type { BaseRow, ISODateTime, Local, LocalMeta, UUID } from '../types/domain';
 import { newId } from '../lib/id';
-import { nowISO } from '../lib/time';
+import { nowISO, systemISO } from '../lib/time';
 import { db, type SyncedTableName } from './schema';
 
 type Insertable<T extends BaseRow> = Omit<T, keyof BaseRow>;
+
+export interface InsertOptions {
+  /** Use this id instead of a random one — for rows every device must agree on. */
+  id?: UUID;
+  /** A default or plan-derived row rather than a user action. See systemISO(). */
+  system?: boolean;
+}
+
+export interface UpdateOptions {
+  system?: boolean;
+  /** Clear deleted_at, bringing a soft-deleted row back. */
+  undelete?: boolean;
+}
+
+export interface DeleteOptions {
+  system?: boolean;
+}
 
 function table(name: SyncedTableName) {
   // Dexie's generated table properties are typed per-entity; the sync layer
@@ -16,18 +33,23 @@ function localMeta(row: BaseRow): LocalMeta {
   return { _dirty: 1, _deleted: row.deleted_at ? 1 : 0 };
 }
 
+function stamp(system: boolean | undefined): ISODateTime {
+  return system ? systemISO() : nowISO();
+}
+
 /** Inserts a row, stamping identity, timestamps, and the dirty flag. */
 export async function insertRow<T extends BaseRow>(
   name: SyncedTableName,
   data: Insertable<T>,
+  opts: InsertOptions = {},
 ): Promise<Local<T>> {
   const ts = nowISO();
   const base = {
     ...data,
-    id: newId(),
+    id: opts.id ?? newId(),
     user_id: null,
     created_at: ts,
-    updated_at: ts,
+    updated_at: opts.system ? systemISO() : ts,
     server_updated_at: null,
     deleted_at: null,
   } as unknown as BaseRow;
@@ -42,6 +64,7 @@ export async function updateRow<T extends BaseRow>(
   name: SyncedTableName,
   id: UUID,
   patch: Partial<Omit<T, keyof BaseRow>>,
+  opts: UpdateOptions = {},
 ): Promise<Local<T>> {
   const existing = (await table(name).get(id)) as Local<T> | undefined;
   if (!existing) throw new Error(`${name}: no row with id ${id}`);
@@ -49,7 +72,8 @@ export async function updateRow<T extends BaseRow>(
   const merged = {
     ...existing,
     ...patch,
-    updated_at: nowISO(),
+    deleted_at: opts.undelete ? null : existing.deleted_at,
+    updated_at: stamp(opts.system),
   } as unknown as BaseRow;
   const row = { ...merged, ...localMeta(merged) } as Local<T>;
 
@@ -58,14 +82,19 @@ export async function updateRow<T extends BaseRow>(
 }
 
 /** Soft delete. The row stays so its tombstone can propagate. */
-export async function softDeleteRow(name: SyncedTableName, id: UUID): Promise<void> {
+export async function softDeleteRow(
+  name: SyncedTableName,
+  id: UUID,
+  opts: DeleteOptions = {},
+): Promise<void> {
   const existing = await table(name).get(id);
   if (!existing) return;
 
+  const deletedAt = nowISO();
   await table(name).put({
     ...existing,
-    deleted_at: nowISO(),
-    updated_at: nowISO(),
+    deleted_at: deletedAt,
+    updated_at: opts.system ? systemISO() : deletedAt,
     _dirty: 1,
     _deleted: 1,
   });
