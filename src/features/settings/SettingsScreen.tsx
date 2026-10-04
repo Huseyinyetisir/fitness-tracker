@@ -1,11 +1,11 @@
 import { useApp } from '../../app/AppContext';
-import Button from '../../components/Button';
 import { Checkbox } from '../../components/Fields';
 import ScreenHeader from '../../components/ScreenHeader';
 import Stepper from '../../components/Stepper';
 import { db } from '../../db/schema';
 import { useLiveQuery } from '../../db/useLiveQuery';
-import { signOut } from '../auth/useAuth';
+import AccountSection from './AccountSection';
+import DataSection from './DataSection';
 import DemoSection from './DemoSection';
 import { prefsId, updatePrefs } from './prefsRepo';
 import SyncStatus from './SyncStatus';
@@ -49,11 +49,9 @@ export default function SettingsScreen() {
           )}
         </div>
 
+        <DataSection />
         <DemoSection />
-
-        <Button variant="danger" block onClick={() => void signOut()}>
-          Sign out
-        </Button>
+        <AccountSection />
       </div>
     </section>
   );

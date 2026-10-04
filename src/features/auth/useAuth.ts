@@ -32,6 +32,7 @@ export async function signIn(email: string, password: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** Local scope: signing out must work offline, and there is only this device's session to end. */
 export async function signOut(): Promise<void> {
-  await supabase.auth.signOut();
+  await supabase.auth.signOut({ scope: 'local' });
 }
