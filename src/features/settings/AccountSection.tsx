@@ -53,7 +53,9 @@ export default function AccountSection() {
         // The first sync after the wipe sets the library, plan and preferences up afresh.
         requestSync();
       } catch (e) {
-        setError(`Nothing was deleted on this device: ${e instanceof Error ? e.message : String(e)}`);
+        setError(
+          `Delete all stopped part-way: ${e instanceof Error ? e.message : String(e)}. Nothing was deleted on this device; your data will be uploaded again at the next sync. Try again to delete.`,
+        );
       }
     });
 

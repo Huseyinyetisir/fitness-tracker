@@ -39,15 +39,30 @@ export async function clearLocalDataUnlessPending(force: boolean): Promise<numbe
  *
  * Children go before parents — the reverse of push order — because the
  * foreign keys have no cascade. The device is cleared only after every server
- * delete succeeds, so a failure part-way leaves something to retry from.
+ * delete succeeds. A failure part-way has already removed some server tables
+ * while the device still believes every row is synced, so every row is queued
+ * for upload again: the next sync puts the server back as it was, parents
+ * first, and the delete can be retried from a whole account.
  *
  * Other signed-in devices keep their local copy until they sign out; they
  * have no tombstones to learn of a hard delete from.
  */
 export async function wipeAccount(client: WipeClient, userId: UUID): Promise<void> {
-  for (const name of [...SYNCED_TABLES].reverse()) {
-    const { error } = await client.deleteAll(name, userId);
-    if (error) throw error;
+  try {
+    for (const name of [...SYNCED_TABLES].reverse()) {
+      const { error } = await client.deleteAll(name, userId);
+      if (error) throw error;
+    }
+  } catch (e) {
+    await markAllDirty();
+    throw e;
   }
   await clearLocalData();
+}
+
+async function markAllDirty(): Promise<void> {
+  const tables = SYNCED_TABLES.map((name) => db.table(name));
+  await db.transaction('rw', tables, async () => {
+    for (const table of tables) await table.toCollection().modify({ _dirty: 1 });
+  });
 }

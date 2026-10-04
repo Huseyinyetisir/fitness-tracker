@@ -39,10 +39,16 @@ describe('wipe', () => {
     expect(await db.sync_meta.count()).toBe(0);
   });
 
-  it('leaves the device untouched when a server delete fails', async () => {
+  it('keeps the device copy when a server delete fails', async () => {
     await expect(wipeAccount(fakeClient('sessions'), 'user-1')).rejects.toThrow('cannot delete sessions');
     expect(await db.sessions.count()).toBe(1);
     expect(await db.sync_meta.count()).toBe(1);
+  });
+
+  it('queues every row for upload again when a server delete fails, so the server is made whole', async () => {
+    await expect(wipeAccount(fakeClient('sessions'), 'user-1')).rejects.toThrow('cannot delete sessions');
+    expect((await db.sessions.get('s1'))?._dirty).toBe(1);
+    expect((await db.body_metrics.get('b1'))?._dirty).toBe(1);
   });
 
   it('clears local data on its own, for signing out', async () => {
