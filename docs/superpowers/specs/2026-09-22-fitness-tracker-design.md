@@ -246,13 +246,17 @@ English UI. kg, km, 24-hour clock, week starts Monday. Dark mode by default. Saf
 
 ## 10. Export, import, and data safety
 
-- **Export JSON** — every table including tombstones, with a schema version. This is a complete, restorable backup.
-- **Export CSV** — one file per table, for spreadsheet use. Not a restore path.
-- **Import / merge JSON** — matches on `id` and applies the same `mergeRow` rule used by sync, so importing an older export cannot clobber newer data.
-- **Delete all data** — clears Dexie and issues hard deletes to Supabase, behind an explicit typed confirmation.
+- **Export JSON** — every table including tombstones, with a format version and the account's user id. This is a complete, restorable backup. Every row carries exactly its table's columns; a compile-time check fails the build if a domain type gains a column the backup would miss.
+- **Export CSV** — three files for spreadsheets: sets, runs and body entries, one row each, joined with dates, workout and exercise names, and derived e1RM and pace. Raw tables full of ids are no use in a spreadsheet, and the JSON backup is the restore path, so CSV is not one.
+- **Import / merge JSON** — validated first: a row missing any column of its table is refused, since one bad row would stall every later push. Rows then match on `id` and the newer `updated_at` wins, as in sync, so importing an older export cannot clobber newer data. A row the import wins is queued for push. An unreferenced local exercise with the same name as one in the backup is retired first, so importing after "Delete all" (which re-seeds the library) does not double it.
+- **Restore into another account** — a backup whose user id differs (a new Supabase project means a new account) first deletes everything in the current account, then imports a re-keyed copy: every row gets a new id, since ids are global in the database; rows derived by name (preferences, the default plan and its days, planned sessions) get the ids this account derives; untouched planned sessions from today on are dropped and re-materialized. Behind a typed confirmation.
+- **Delete all data** — hard deletes on the server, children before parents (no cascade), then clears the device including sync bookkeeping, behind a typed confirmation. The next sync sets the library, plan and preferences up afresh. Other signed-in devices should sign out first: a hard delete leaves no tombstone to sync, so they keep their copy and could upload it again. If a server delete fails part-way, every local row is queued for upload again, so the next sync makes the server whole before the delete is retried.
+- **Sign out** clears the device, so rows can never be pushed under whichever account signs in next. Unsynced changes are counted in the same transaction as the clear — not taken from the sync status, which can lag a local write — and reported instead of lost.
+- **Demo data** — twelve weeks of plausible training, each row marked with the note "Demo data", removable in one action without touching real entries.
+- Wiping, restoring and signing out run under the same lock as sync, so a sync can never push rows back mid-wipe.
 - Supabase is the off-device backup. Note that **free-tier projects pause after about 7 days of inactivity**; daily use prevents this, but after a long break the first sync may need the project resumed from the dashboard.
 
-On Android, export writes through `@capacitor/filesystem` and hands off via `@capacitor/share`. A plain browser download does not reliably work from inside the Capacitor WebView.
+On Android, exports are written to the app cache with `@capacitor/filesystem` and handed to the share sheet with `@capacitor/share`; a download link does nothing inside the WebView. Import uses a file input, which the WebView serves with the system file picker.
 
 ## 11. Testing
 
@@ -304,37 +308,20 @@ VITE_SUPABASE_ANON_KEY=
 
 ## 14. Android build
 
-**Known setup gap:** Android Studio is not installed on this machine, and the installed JDK is Homebrew OpenJDK 17. Capacitor 7's Android template requires **JDK 21**. Either point Gradle at Android Studio's bundled JetBrains Runtime (Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK), or `brew install openjdk@21`. Both are free.
+Capacitor 8 (`com.huseyin.fittracker`). The APK builds from the command line with `npm run android:debug` or `npm run android:release`; Android Studio is not needed.
 
-### One-time setup
-
-1. Install Android Studio. In the SDK Manager, install the current SDK Platform and Build-Tools, and accept the licenses.
-2. `npm i @capacitor/core @capacitor/cli @capacitor/android @capacitor/haptics @capacitor/filesystem @capacitor/share`
-3. `npx cap init "Fit Tracker" com.huseyin.fittracker --web-dir=dist`
-4. `npm run build && npx cap add android`
-
-### Each build
-
-```bash
-npm run build && npx cap sync android && npx cap open android
-```
-
-**Debug APK** — in Android Studio: Build → Build Bundle(s)/APK(s) → Build APK(s). Output at `android/app/build/outputs/apk/debug/app-debug.apk`.
-
-**Signed release APK** — generate a keystore once:
-
-```bash
-keytool -genkey -v -keystore fit-tracker.keystore \
-  -alias fittracker -keyalg RSA -keysize 2048 -validity 10000
-```
-
-Keep the keystore and its `keystore.properties` out of git. Reference them from `android/app/build.gradle` signing configs, then Build → Generate Signed Bundle/APK → APK → release.
-
-**Install on the phone** — `adb install -r app-release.apk` over USB with developer mode on, or transfer the file and allow "install unknown apps" for the file manager.
+- **Node 22**, which Capacitor 8 requires, pinned for this project by `.nvmrc`.
+- **JDK 21**, which Capacitor 8's Gradle build requires. `scripts/android.sh` finds one (`JAVA_HOME` if it is 21, then `java_home -v 21`, then Homebrew's `openjdk@21`) without changing the machine's default Java.
+- **Android SDK** command-line tools with platform 36 and build-tools, via `ANDROID_HOME`.
+- **The `android/` project is committed.** Its manifest, theme, icon and signing configuration are source; build output and the copied web assets are ignored by its own `.gitignore`.
+- **Release signing** reads `android/keystore.properties` (gitignored), which points at a keystore kept outside the repository. Without it a release build fails in the script rather than producing an unsigned APK.
 
 ### Android-specific behaviour
 
-The rest timer must compute remaining time from a stored absolute timestamp rather than decrementing on a `setInterval` tick. Android throttles timers when the screen is off, and a countdown that counts ticks will drift or stall between sets. Vibration fires through `@capacitor/haptics`.
+- **Safe areas.** Android WebViews before Chromium 140 report wrong `env(safe-area-inset-*)` values. Capacitor's SystemBars plugin (`insetsHandling: 'css'`) pads the WebView and injects `--safe-area-inset-*`, which `index.css` prefers over `env()`. The window background is the app's dark colour, since it shows behind the padded system bars.
+- **Rest timer.** Remaining time is computed from a stored absolute end time, never counted in ticks. In the foreground the end is signalled through `@capacitor/haptics`. Android drops haptic vibration from an app that is not in the foreground, screen off included, so whenever the app leaves the foreground mid-rest it schedules a local notification for the end time on a vibrating channel; returning cancels it. `USE_EXACT_ALARM` makes that alarm exact; it is granted at install, and Play's policy on it does not apply to a sideloaded app. Notification permission is asked during the first rest.
+- **Back button.** `@capacitor/app` walks the WebView history, every screen being a hash route; on the first screen it sends the app to the background.
+- **Icon.** An adaptive vector icon, a dumbbell in the accent colour on the app background, with a monochrome layer for themed icons.
 
 ## 15. Build order
 
@@ -365,3 +352,12 @@ Some rows are derived by the app rather than typed by the user: the default week
 - **A plan starts on the day it is created**, not on that week's Monday, so days before it existed are never planned.
 
 Schema version 2 adds an `exercise_id` index on `session_exercises` for "last time". Versions are only ever added, never edited: devices hold real version 1 databases.
+
+## 18. Progress, as built
+
+- **Views:** Strength (adherence, sessions, weekly volume, sessions per week), Exercises (every lifted exercise, then per exercise: e1RM with PR markers, best set, volume, RPE, rep maxes), RPE (fatigue banner, weekly session RPE, volume against RPE), Running (distance, runs, longest, weekly distance, pace per run type, monthly distance, pace against RPE), Body (weight and resting heart rate, with entry).
+- **Ranges** are whole Monday-start weeks ending with the current one — 4, 12 and 26 weeks — or everything, from the week of the earliest data. View and range live in the route and are replaced, not pushed, when changed.
+- **PRs are judged against all history**, whatever range is shown; a session's first appearance is never a PR, having nothing to beat. Warm-ups never count.
+- **Adherence** counts planned sessions up to today; today's counts only once finished.
+- **Body entries:** one per day, so each chart is a single line.
+- The charts library loads only when Progress opens, keeping it out of the startup path of the screens used in the gym.
