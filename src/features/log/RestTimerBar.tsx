@@ -6,7 +6,7 @@ import type { RestTimerControls } from './useRestTimer';
 export default function RestTimerBar({ timer }: { timer: RestTimerControls }) {
   if (!timer.active) return null;
   return (
-    <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-10 px-4">
+    <div className="fixed inset-x-0 bottom-[calc(3.5rem+var(--inset-bottom))] z-10 px-4">
       <div
         role="timer"
         aria-label={timer.done ? 'Rest over' : `Rest, ${timer.remaining} seconds left`}

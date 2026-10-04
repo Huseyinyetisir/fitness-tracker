@@ -9,6 +9,16 @@
   --color-accent: #4ea1ff;
 }
 
+:root {
+  /*
+   * Safe-area insets. Inside the Android app, Capacitor's SystemBars plugin
+   * injects --safe-area-inset-*, because older Android WebViews report wrong
+   * env() values. A browser falls back to env(); a desktop browser to 0.
+   */
+  --inset-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --inset-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+}
+
 html,
 body,
 #root {

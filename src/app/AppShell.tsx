@@ -14,8 +14,8 @@ export default function AppShell() {
   }, [href]);
 
   return (
-    <div className="min-h-full pt-[env(safe-area-inset-top)]">
-      <div className="mx-auto max-w-xl px-4 pt-2 pb-[calc(9rem+env(safe-area-inset-bottom))]">
+    <div className="min-h-full pt-[var(--inset-top)]">
+      <div className="mx-auto max-w-xl px-4 pt-2 pb-[calc(9rem+var(--inset-bottom))]">
         <div className="flex justify-end">
           <SyncBadge />
         </div>
