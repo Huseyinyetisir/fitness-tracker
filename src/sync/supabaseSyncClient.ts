@@ -1,6 +1,8 @@
 import { supabase } from '../supabase/client';
 import type { PushClient } from './push';
 import type { PullClient } from './pull';
+import { fetchAllPages } from './paginate';
+import type { BaseRow } from '../types/domain';
 
 /**
  * The real Supabase-backed sync client.
@@ -17,12 +19,23 @@ export const supabaseSyncClient: PushClient & PullClient = {
   },
 
   async select(table, since) {
-    let query = supabase.from(table).select('*');
-    if (since) query = query.gte('server_updated_at', since);
-    const { data, error } = await query.order('server_updated_at', { ascending: true });
-    return {
-      rows: (data ?? []) as never[],
-      error: error ? new Error(error.message) : null,
-    };
+    return fetchAllPages<BaseRow>(async (from, to) => {
+      let query = supabase.from(table).select('*');
+      if (since) query = query.gte('server_updated_at', since);
+
+      const { data, error } = await query
+        // server_updated_at alone is not a total order — rows written in the
+        // same transaction share it, and without a tiebreak the database may
+        // order them differently between requests, so a row can be returned
+        // twice or skipped across a page boundary.
+        .order('server_updated_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to);
+
+      return {
+        rows: (data ?? []) as BaseRow[],
+        error: error ? new Error(error.message) : null,
+      };
+    });
   },
 };
