@@ -123,7 +123,7 @@ A debug build and a release build are signed with different keys, so Android wil
 - **Settings → Export backup (JSON)** saves everything, deleted rows included. Keep a recent one.
 - **Settings → Import backup** merges a backup into the account. Each row keeps whichever copy was changed last, so an old backup never overwrites newer edits. A backup from a *different* account — say, after moving to a new Supabase project — can be restored too: that replaces everything in the current account and asks you to type RESTORE first.
 - **CSV exports** (sets, runs, body) are for spreadsheets. They cannot be imported back; the JSON backup can.
-- **Delete all data** removes everything from the server and this device, after you type DELETE. Other signed-in devices keep their copy until they sign out.
+- **Delete all data** removes everything from the server and this device, after you type DELETE. Sign out on your other devices first — they keep their copy and could upload it again.
 - **Signing out** clears this device. If changes have not synced yet, the app warns you first.
 
 ## Project layout

@@ -93,7 +93,9 @@ export default function AccountSection() {
             Deletes every workout, session, run, plan, body entry and setting — on the server and on this device. This
             cannot be undone. Export a backup first if you might want any of it.
           </p>
-          <p className="text-muted">Needs a connection. Other signed-in devices keep their copy until they sign out.</p>
+          <p className="text-muted">
+            Needs a connection. Sign out on your other devices first — they keep their copy and could upload it again.
+          </p>
         </ConfirmPhrase>
       ) : (
         <Button variant="danger" block disabled={busy} onClick={() => setPanel('delete')}>

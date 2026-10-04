@@ -44,8 +44,9 @@ export async function clearLocalDataUnlessPending(force: boolean): Promise<numbe
  * for upload again: the next sync puts the server back as it was, parents
  * first, and the delete can be retried from a whole account.
  *
- * Other signed-in devices keep their local copy until they sign out; they
- * have no tombstones to learn of a hard delete from.
+ * Other signed-in devices keep their local copy: they have no tombstones to
+ * learn of a hard delete from, so their next sync could upload it again. The
+ * user is told to sign out on them first.
  */
 export async function wipeAccount(client: WipeClient, userId: UUID): Promise<void> {
   try {
