@@ -95,6 +95,11 @@ export function childrenSignature(children: SessionExercise[]): string {
     .join(';');
 }
 
+/** A session is the user's once it has a real timestamp, has left 'planned', or has work logged in it. */
+export function ownedByUser(session: Session, hasLoggedWork: boolean): boolean {
+  return !isSystemTimestamp(session.updated_at) || session.status !== 'planned' || hasLoggedWork;
+}
+
 /**
  * What to do with one date's materialized session.
  *
@@ -114,9 +119,7 @@ export function decide(args: {
   const { existing, desired } = args;
   if (!existing) return desired ? 'insert' : 'leave';
 
-  const ownedByUser =
-    !isSystemTimestamp(existing.updated_at) || existing.status !== 'planned' || args.hasLoggedWork;
-  if (ownedByUser || args.date < args.today) return 'leave';
+  if (ownedByUser(existing, args.hasLoggedWork) || args.date < args.today) return 'leave';
 
   if (existing.deleted_at !== null) return desired ? 'revive' : 'leave';
   if (!desired) return 'remove';
@@ -170,13 +173,20 @@ export async function materializeWeek(userId: string, weekStart: ISODate, todayD
         const existing = await db.sessions.get(id);
         const children = existing ? await db.session_exercises.where('session_id').equals(id).toArray() : [];
 
+        const work = existing ? await hasLoggedWork(id, children) : false;
+
+        if (existing && existing.deleted_at === null && ownedByUser(existing, work)) {
+          if (await dropInjectedChildren(children)) changed++;
+          continue;
+        }
+
         const decision = decide({
           existing,
           existingSignature: childrenSignature(children),
           desired,
           date,
           today: todayDate,
-          hasLoggedWork: existing ? await hasLoggedWork(id, children) : false,
+          hasLoggedWork: work,
         });
         if (decision === 'leave') continue;
         changed++;
@@ -215,6 +225,27 @@ async function hasLoggedWork(sessionId: UUID, children: Local<SessionExercise>[]
   }
   const runs = await db.runs.where('session_id').equals(sessionId).toArray();
   return runs.some((r) => r._deleted === 0);
+}
+
+/**
+ * Removes exercises another device's plan rewrite added to a session the user
+ * owns. The server accepts such an insert — a new id has nothing to conflict
+ * with — so it arrives by pull. Once a session is claimed every exercise the
+ * user has is real-stamped, so a live, system-stamped one with nothing logged
+ * can only be an injection. The removal is a system write later than the
+ * injection, so it wins on every device. An exercise with a live set is never
+ * removed. Returns whether anything was.
+ */
+async function dropInjectedChildren(children: Local<SessionExercise>[]): Promise<boolean> {
+  let dropped = false;
+  for (const c of children) {
+    if (c._deleted === 1 || !isSystemTimestamp(c.updated_at)) continue;
+    const sets = await db.set_entries.where('session_exercise_id').equals(c.id).toArray();
+    if (sets.some((s) => s._deleted === 0)) continue;
+    await softDeleteRow('session_exercises', c.id, { system: true });
+    dropped = true;
+  }
+  return dropped;
 }
 
 /** Makes a session's exercises match the desired items, as system writes. */

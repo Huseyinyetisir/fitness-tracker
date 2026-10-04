@@ -1,7 +1,10 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../db/schema';
-import { makeExercise, makeWorkout, resetDb } from '../../test/fixtures';
+import { isSystemTimestamp } from '../../lib/time';
+import { USER, makeExercise, makeWorkout, markSynced, resetDb } from '../../test/fixtures';
+import { materializeWeek, plannedSessionId } from '../plan/materialize';
+import { defaultPlanDayId, ensureWeekPlan, setDayTemplate } from '../plan/planRepo';
 import { emptyRunDraft, type RunDraft } from './runRules';
 import { saveRun } from './runsRepo';
 import { createSessionFromTemplate } from './sessionsRepo';
@@ -10,6 +13,24 @@ const MON = '2026-10-05';
 const DRAFT: RunDraft = { ...emptyRunDraft(8), duration: '42:30', rpe: 6, splits: [{ distance: 1, duration: '5:10' }] };
 
 beforeEach(resetDb);
+
+/** Monday materialized from the plan as a mixed workout (Squat, then an easy run), untouched. */
+async function materializedBrick() {
+  await markSynced();
+  const squat = await makeExercise('Squat');
+  const easy = await makeExercise('Easy Run', 'cardio');
+  const brick = await makeWorkout('Brick', [squat, easy]);
+  await ensureWeekPlan(USER, MON);
+  await setDayTemplate(defaultPlanDayId(USER, 1), brick.id);
+  await materializeWeek(USER, MON, MON);
+  const sessionId = plannedSessionId(USER, MON);
+  const children = (await db.session_exercises.where('session_id').equals(sessionId).toArray())
+    .filter((c) => c._deleted === 0)
+    .sort((a, b) => a.position - b.position);
+  expect((await db.sessions.get(sessionId))?.kind).toBe('mixed');
+  expect(isSystemTimestamp((await db.sessions.get(sessionId))!.updated_at)).toBe(true);
+  return { sessionId, children, squat, easy };
+}
 
 async function liveRuns() {
   return (await db.runs.toArray()).filter((r) => r._deleted === 0);
@@ -65,5 +86,21 @@ describe('saveRun', () => {
       saveRun({ sessionId: null, date: MON, exerciseId: easy.id, draft: { ...DRAFT, rpe: null } }),
     ).rejects.toThrow(/RPE/);
     expect(await db.sessions.count()).toBe(0);
+  });
+});
+
+describe('saveRun into a materialized session', () => {
+  it('claims the session and its exercises', async () => {
+    const { sessionId, easy } = await materializedBrick();
+    await saveRun({ sessionId, date: MON, exerciseId: easy.id, draft: DRAFT });
+
+    const session = await db.sessions.get(sessionId);
+    expect(isSystemTimestamp(session!.updated_at)).toBe(false);
+    expect(session?.started_at).not.toBeNull();
+    const children = (await db.session_exercises.where('session_id').equals(sessionId).toArray()).filter(
+      (c) => c._deleted === 0,
+    );
+    expect(children).toHaveLength(2);
+    expect(children.map((c) => isSystemTimestamp(c.updated_at))).toEqual([false, false]);
   });
 });

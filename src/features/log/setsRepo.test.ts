@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../db/schema';
 import { insertRow } from '../../db/repo';
 import { isSystemTimestamp } from '../../lib/time';
-import { makeExercise, makeWorkout, resetDb } from '../../test/fixtures';
+import { USER, makeExercise, makeWorkout, markSynced, resetDb } from '../../test/fixtures';
 import type { Session } from '../../types/domain';
+import { materializeWeek, plannedSessionId } from '../plan/materialize';
+import { defaultPlanDayId, ensureWeekPlan, setDayTemplate } from '../plan/planRepo';
 import { createSessionFromTemplate } from './sessionsRepo';
 import {
   addExerciseToSession,
@@ -27,6 +29,31 @@ async function legsSession() {
   const session = await createSessionFromTemplate(MON, legs.id, { wasPlanned: true });
   const [child] = await db.session_exercises.where('session_id').equals(session.id).toArray();
   return { squat, session, child };
+}
+
+/** Monday materialized from the plan as Legs (Squat, Lunge): system-stamped, untouched. */
+async function materializedLegs() {
+  await markSynced();
+  const squat = await makeExercise('Squat');
+  const lunge = await makeExercise('Lunge');
+  const legs = await makeWorkout('Legs', [squat, lunge]);
+  await ensureWeekPlan(USER, MON);
+  await setDayTemplate(defaultPlanDayId(USER, 1), legs.id);
+  await materializeWeek(USER, MON, MON);
+  const sessionId = plannedSessionId(USER, MON);
+  const children = (await db.session_exercises.where('session_id').equals(sessionId).toArray())
+    .filter((c) => c._deleted === 0)
+    .sort((a, b) => a.position - b.position);
+  expect(children).toHaveLength(2);
+  expect(isSystemTimestamp((await db.sessions.get(sessionId))!.updated_at)).toBe(true);
+  expect(children.every((c) => isSystemTimestamp(c.updated_at))).toBe(true);
+  return { sessionId, children };
+}
+
+async function liveChildStamps(sessionId: string) {
+  return (await db.session_exercises.where('session_id').equals(sessionId).toArray())
+    .filter((c) => c._deleted === 0)
+    .map((c) => isSystemTimestamp(c.updated_at));
 }
 
 async function setsOf(childId: string) {
@@ -76,6 +103,13 @@ describe('logSet', () => {
     expect(isSystemTimestamp((await db.sessions.get(planned.id))!.updated_at)).toBe(false);
     await logSet(child.id, SET);
     expect(isSystemTimestamp((await db.sessions.get(planned.id))!.updated_at)).toBe(false);
+  });
+
+  it("claims every live exercise of a materialized session, not just the one logged into", async () => {
+    const { sessionId, children } = await materializedLegs();
+    await logSet(children[0].id, SET);
+    expect(isSystemTimestamp((await db.sessions.get(sessionId))!.updated_at)).toBe(false);
+    expect(await liveChildStamps(sessionId)).toEqual([false, false]);
   });
 });
 
@@ -129,6 +163,15 @@ describe('finishSession', () => {
     expect(stored).toMatchObject({ status: 'partial', energy: 4, notes: 'short on time' });
     expect(stored?.completed_at).not.toBeNull();
     expect(stored?.started_at).not.toBeNull();
+  });
+
+  it('claims an untouched materialized session and its exercises, e.g. when skipping it', async () => {
+    const { sessionId } = await materializedLegs();
+    await finishSession(sessionId, { status: 'skipped', energy: null, notes: null });
+    const stored = await db.sessions.get(sessionId);
+    expect(stored?.status).toBe('skipped');
+    expect(isSystemTimestamp(stored!.updated_at)).toBe(false);
+    expect(await liveChildStamps(sessionId)).toEqual([false, false]);
   });
 
   it('keeps an existing start time', async () => {

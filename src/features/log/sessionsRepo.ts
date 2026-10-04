@@ -1,5 +1,6 @@
 import { db } from '../../db/schema';
-import { insertRow, softDeleteRow } from '../../db/repo';
+import { insertRow, softDeleteRow, updateRow } from '../../db/repo';
+import { isSystemTimestamp, nowISO } from '../../lib/time';
 import type { ISODate, Local, Session, SessionExercise, UUID } from '../../types/domain';
 import { sessionKindFor } from '../plan/materialize';
 
@@ -53,6 +54,34 @@ export async function createSessionFromTemplate(
       return session;
     },
   );
+}
+
+/**
+ * Makes a session the user's. The first write into a materialized session —
+ * a set, an exercise, a note, a run, a finish — gives it a real timestamp, so
+ * the plan never rewrites it again. Logging also records the start.
+ *
+ * Ownership has to reach the session's exercises too. A device that has not
+ * yet seen this claim may still rewrite the session from the plan: the server
+ * rejects that for the session row, but would accept it for exercises still
+ * carrying a system stamp — deleting or replacing exactly the ones logged into.
+ *
+ * Call it inside a transaction that includes db.sessions and db.session_exercises.
+ */
+export async function claimSession(sessionId: UUID, opts: { start: boolean }): Promise<void> {
+  const session = await db.sessions.get(sessionId);
+  if (!session) return;
+  if (opts.start && !session.started_at) {
+    await updateRow<Session>('sessions', sessionId, { started_at: nowISO() });
+  } else if (isSystemTimestamp(session.updated_at)) {
+    await updateRow<Session>('sessions', sessionId, {});
+  }
+  const children = await db.session_exercises.where('session_id').equals(sessionId).toArray();
+  for (const child of children) {
+    if (child._deleted === 0 && isSystemTimestamp(child.updated_at)) {
+      await updateRow<SessionExercise>('session_exercises', child.id, {});
+    }
+  }
 }
 
 /** Soft-deletes a session and everything logged under it. A user action, so never revived. */

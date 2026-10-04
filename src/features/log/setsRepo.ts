@@ -1,28 +1,14 @@
 import { db } from '../../db/schema';
 import { insertRow, softDeleteRow, updateRow } from '../../db/repo';
-import { isSystemTimestamp, nowISO } from '../../lib/time';
+import { nowISO } from '../../lib/time';
 import type { Exercise, Local, Session, SessionExercise, SetEntry, UUID } from '../../types/domain';
+import { claimSession } from './sessionsRepo';
 import { validateSet, type FinishedStatus, type SetDraft } from './setRules';
 
 function assertValid(draft: SetDraft): number {
   const messages = Object.values(validateSet(draft));
   if (messages.length > 0 || draft.rpe === null) throw new Error(messages.join('; '));
   return draft.rpe;
-}
-
-/**
- * Makes a session the user's. The first write into a materialized session —
- * a set, an added exercise, a note — gives it a real timestamp, so the plan
- * never rewrites a session the user has begun. Logging also records the start.
- */
-async function claimSession(sessionId: UUID, opts: { start: boolean }): Promise<void> {
-  const session = await db.sessions.get(sessionId);
-  if (!session) return;
-  if (opts.start && !session.started_at) {
-    await updateRow<Session>('sessions', sessionId, { started_at: nowISO() });
-  } else if (isSystemTimestamp(session.updated_at)) {
-    await updateRow<Session>('sessions', sessionId, {});
-  }
 }
 
 export async function logSet(sessionExerciseId: UUID, draft: SetDraft): Promise<Local<SetEntry>> {
@@ -107,14 +93,18 @@ export async function finishSession(
   sessionId: UUID,
   outcome: { status: FinishedStatus; energy: number | null; notes: string | null },
 ): Promise<void> {
-  const session = await db.sessions.get(sessionId);
-  if (!session) throw new Error(`sessions: no row with id ${sessionId}`);
-  const now = nowISO();
-  await updateRow<Session>('sessions', sessionId, {
-    status: outcome.status,
-    energy: outcome.energy,
-    notes: outcome.notes,
-    completed_at: now,
-    started_at: session.started_at ?? now,
+  await db.transaction('rw', [db.sessions, db.session_exercises], async () => {
+    if (!(await db.sessions.get(sessionId))) throw new Error(`sessions: no row with id ${sessionId}`);
+    // Finishing — skipping a planned session included — is a user write.
+    await claimSession(sessionId, { start: false });
+    const session = (await db.sessions.get(sessionId))!;
+    const now = nowISO();
+    await updateRow<Session>('sessions', sessionId, {
+      status: outcome.status,
+      energy: outcome.energy,
+      notes: outcome.notes,
+      completed_at: now,
+      started_at: session.started_at ?? now,
+    });
   });
 }

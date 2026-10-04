@@ -2,14 +2,18 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../db/schema';
 import { insertRow, softDeleteRow } from '../../db/repo';
-import { isSystemTimestamp } from '../../lib/time';
+import { isSystemTimestamp, systemISO } from '../../lib/time';
+import { mergeRow } from '../../sync/merge';
 import { USER, base, makeExercise, makeWorkout, markSynced, resetDb } from '../../test/fixtures';
-import type { Local, Session, SetEntry, WeekPlan, WorkoutTemplate } from '../../types/domain';
+import type { Local, Session, SessionExercise, SetEntry, WeekPlan, WorkoutTemplate } from '../../types/domain';
+import { loadSessionView } from '../log/sessionView';
+import { logSet } from '../log/setsRepo';
 import {
   decide,
   desiredFor,
   desiredSignature,
   materializeWeek,
+  plannedChildId,
   plannedSessionId,
   sessionKindFor,
   type DesiredSession,
@@ -343,5 +347,103 @@ describe('materializeWeek', () => {
     await materializeWeek(USER, MON, MON);
     const sessions: Local<Session>[] = await week();
     expect(sessions.map((s) => s.id).sort()).toEqual([extra.id, plannedSessionId(USER, MON)].sort());
+  });
+});
+
+// ---------------------------------------------------------------- another device's rewrite, arriving by pull
+
+/** Applies a remote session_exercises row exactly as pullTable does. */
+async function pullChild(remote: SessionExercise) {
+  const merged = mergeRow(await db.session_exercises.get(remote.id), remote);
+  if (merged) await db.session_exercises.put(merged);
+}
+
+/** The server's copy of a local row: no local index fields. */
+function asRemote(row: Local<SessionExercise>, patch: Partial<SessionExercise>): SessionExercise {
+  const { _dirty, _deleted, ...rest } = row;
+  void _dirty;
+  void _deleted;
+  return { ...rest, ...patch };
+}
+
+describe('a session the user logged into, rewritten from the plan by another device', () => {
+  it('keeps the logged exercise and its sets, and drops the exercise the other device injected', async () => {
+    const { squat, bench, push } = await setup();
+    await materializeWeek(USER, MON, MON);
+    const sessionId = plannedSessionId(USER, MON);
+    const [squatChild] = await childrenOf(sessionId);
+    expect(squatChild.exercise_id).toBe(squat.id);
+
+    // The phone, offline in the gym, logs Squat.
+    const set = await logSet(squatChild.id, { reps: 5, weight_kg: 100, rpe: 8, is_warmup: false });
+
+    // The laptop, which never saw that, changed Monday to Push and rewrote the
+    // session from the plan. The server rejected the session row (the phone's
+    // claim is newer) but took both exercise writes; the phone now pulls them.
+    const [pushItem] = await listWorkoutItems(push.id);
+    await pullChild(asRemote(squatChild, { deleted_at: new Date().toISOString(), updated_at: systemISO() }));
+    const benchId = plannedChildId(sessionId, pushItem.id);
+    const benchRow: Local<SessionExercise> = {
+      ...base(benchId, { updated_at: systemISO() }),
+      session_id: sessionId,
+      exercise_id: bench.id,
+      position: 0,
+      notes: null,
+      target_sets: 3,
+      target_reps: 5,
+      target_weight_kg: 100,
+    };
+    await pullChild(asRemote(benchRow, {}));
+
+    await materializeWeek(USER, MON, MON);
+
+    expect((await db.session_exercises.get(squatChild.id))?._deleted).toBe(0);
+    expect((await db.set_entries.get(set.id))?._deleted).toBe(0);
+    const view = await loadSessionView(sessionId);
+    expect(view?.blocks.map((b) => b.child.id)).toEqual([squatChild.id]);
+    expect(view?.blocks[0].sets.map((s) => s.id)).toEqual([set.id]);
+    const injected = await db.session_exercises.get(benchId);
+    expect(injected?._deleted).toBe(1);
+    expect(injected?._dirty).toBe(1);
+  });
+
+  it('never deletes a system-stamped exercise that has a live set, even under a session the user owns', async () => {
+    const { bench } = await setup();
+    await materializeWeek(USER, MON, MON);
+    const sessionId = plannedSessionId(USER, MON);
+    const [squatChild] = await childrenOf(sessionId);
+
+    // Data as an older build left it: work logged, the exercise never claimed.
+    const set = await insertRow<SetEntry>('set_entries', {
+      session_exercise_id: squatChild.id,
+      set_index: 0,
+      reps: 5,
+      weight_kg: 100,
+      rpe: 8,
+      is_warmup: false,
+      notes: null,
+    });
+    // And an exercise injected by another device's plan rewrite, with nothing logged.
+    const injected = await insertRow<SessionExercise>(
+      'session_exercises',
+      {
+        session_id: sessionId,
+        exercise_id: bench.id,
+        position: 1,
+        notes: null,
+        target_sets: 3,
+        target_reps: 5,
+        target_weight_kg: 100,
+      },
+      { system: true },
+    );
+    expect(isSystemTimestamp((await db.session_exercises.get(squatChild.id))!.updated_at)).toBe(true);
+
+    expect(await materializeWeek(USER, MON, MON)).toBe(1);
+
+    expect((await db.session_exercises.get(squatChild.id))?._deleted).toBe(0);
+    expect((await db.set_entries.get(set.id))?._deleted).toBe(0);
+    expect((await db.session_exercises.get(injected.id))?._deleted).toBe(1);
+    expect(await materializeWeek(USER, MON, MON)).toBe(0);
   });
 });

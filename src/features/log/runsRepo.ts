@@ -3,6 +3,7 @@ import { insertRow, softDeleteRow, updateRow } from '../../db/repo';
 import { nowISO } from '../../lib/time';
 import type { ISODate, Run, RunSplit, Session, UUID } from '../../types/domain';
 import { filledSplits, parseDuration, validateRun, type RunDraft } from './runRules';
+import { claimSession } from './sessionsRepo';
 
 /**
  * Saves a run. With no session it creates a finished, unplanned run session;
@@ -20,7 +21,7 @@ export async function saveRun(args: {
   const messages = Object.values(validateRun(draft));
   if (messages.length > 0) throw new Error(messages.join('; '));
 
-  return db.transaction('rw', [db.sessions, db.runs, db.run_splits, db.exercises], async () => {
+  return db.transaction('rw', [db.sessions, db.session_exercises, db.runs, db.run_splits, db.exercises], async () => {
     const exercise = await db.exercises.get(args.exerciseId);
 
     let sessionId = args.sessionId;
@@ -67,6 +68,10 @@ export async function saveRun(args: {
         duration_s: parseDuration(split.duration) ?? 0,
       });
     }
+
+    // Logging into an existing session — a planned run, or the run inside a
+    // mixed session — makes it the user's, so no device rewrites it from the plan.
+    if (args.sessionId) await claimSession(sessionId, { start: true });
 
     return sessionId;
   });
