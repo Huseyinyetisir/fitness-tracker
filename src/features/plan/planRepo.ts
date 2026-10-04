@@ -1,7 +1,6 @@
 import { db } from '../../db/schema';
 import { insertRow, updateRow } from '../../db/repo';
 import { hasCompletedSync } from '../../db/syncState';
-import { startOfWeek } from '../../lib/time';
 import { deterministicId } from '../../lib/uuidv5';
 import type { ISODate, Local, UUID, WeekPlan, WeekPlanDay, Weekday } from '../../types/domain';
 
@@ -17,6 +16,7 @@ export function defaultPlanDayId(userId: string, weekday: Weekday): UUID {
 
 /**
  * Creates the default plan and its seven rest days if they are missing.
+ * The plan starts today: days before it existed are never planned, so they can never read as missed.
  *
  * Deterministic ids mean every device creates the same rows. System
  * timestamps mean those defaults can never overwrite a day the user has set.
@@ -35,7 +35,7 @@ export async function ensureWeekPlan(
     if (!plan) {
       plan = await insertRow<WeekPlan>(
         'week_plans',
-        { name: 'My plan', active_from: startOfWeek(todayDate) },
+        { name: 'My plan', active_from: todayDate },
         { id: planId, system: true },
       );
       created = true;

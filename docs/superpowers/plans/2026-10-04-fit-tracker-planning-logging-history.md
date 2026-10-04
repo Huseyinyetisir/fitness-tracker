@@ -996,7 +996,9 @@ describe('ensureWeekPlan', () => {
 
     expect(result?.created).toBe(true);
     expect(result?.plan.id).toBe(defaultPlanId(USER));
-    expect(result?.plan.active_from).toBe('2026-10-05');
+    // A plan applies from the day it is created, not from that week's Monday —
+    // otherwise the days before it existed would read as missed.
+    expect(result?.plan.active_from).toBe(WED);
     expect(isSystemTimestamp(result!.plan.updated_at)).toBe(true);
 
     const days = await planDays(defaultPlanId(USER));
@@ -1092,7 +1094,6 @@ Expected: FAIL — module `./planRepo` does not exist.
 import { db } from '../../db/schema';
 import { insertRow, updateRow } from '../../db/repo';
 import { hasCompletedSync } from '../../db/syncState';
-import { startOfWeek } from '../../lib/time';
 import { deterministicId } from '../../lib/uuidv5';
 import type { ISODate, Local, UUID, WeekPlan, WeekPlanDay, Weekday } from '../../types/domain';
 
@@ -1108,6 +1109,7 @@ export function defaultPlanDayId(userId: string, weekday: Weekday): UUID {
 
 /**
  * Creates the default plan and its seven rest days if they are missing.
+ * The plan starts today: days before it existed are never planned, so they can never read as missed.
  *
  * Deterministic ids mean every device creates the same rows. System
  * timestamps mean those defaults can never overwrite a day the user has set.
@@ -1126,7 +1128,7 @@ export async function ensureWeekPlan(
     if (!plan) {
       plan = await insertRow<WeekPlan>(
         'week_plans',
-        { name: 'My plan', active_from: startOfWeek(todayDate) },
+        { name: 'My plan', active_from: todayDate },
         { id: planId, system: true },
       );
       created = true;

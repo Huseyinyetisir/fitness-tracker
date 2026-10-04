@@ -31,7 +31,9 @@ describe('ensureWeekPlan', () => {
 
     expect(result?.created).toBe(true);
     expect(result?.plan.id).toBe(defaultPlanId(USER));
-    expect(result?.plan.active_from).toBe('2026-10-05');
+    // A plan applies from the day it is created, not from that week's Monday —
+    // otherwise the days before it existed would read as missed.
+    expect(result?.plan.active_from).toBe(WED);
     expect(isSystemTimestamp(result!.plan.updated_at)).toBe(true);
 
     const days = await planDays(defaultPlanId(USER));
