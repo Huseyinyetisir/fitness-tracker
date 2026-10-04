@@ -1,5 +1,6 @@
 import { db } from '../../db/schema';
 import { insertRow, softDeleteRow } from '../../db/repo';
+import { DEMO_NOTE } from '../../lib/demoNote';
 import { addDays, daysBetween, parseISODate, startOfWeek } from '../../lib/time';
 import type {
   BodyMetric,
@@ -16,12 +17,7 @@ import type {
 import { removeSession } from '../log/sessionsRepo';
 import { deleteWorkout } from '../plan/workoutsRepo';
 
-/**
- * Every demo row carries this note — sessions, workouts and body entries —
- * which is how "Remove demo data" finds them again, on any device. It is also
- * visible, so a demo session is never mistaken for a real one.
- */
-export const DEMO_NOTE = 'Demo data';
+export { DEMO_NOTE };
 
 /** Whole weeks of history before the current one. */
 export const DEMO_WEEKS = 12;

@@ -1,5 +1,6 @@
 import { db } from '../../db/schema';
 import { insertRow, softDeleteRow, updateRow } from '../../db/repo';
+import { DEMO_NOTE } from '../../lib/demoNote';
 import type { Exercise, Local, UUID, WorkoutTemplate, WorkoutTemplateItem } from '../../types/domain';
 import { moveItem, renumber } from './reorder';
 
@@ -44,7 +45,8 @@ export async function duplicateWorkout(id: UUID): Promise<Local<WorkoutTemplate>
     if (!source) throw new Error(`workout_templates: no row with id ${id}`);
     const copy = await insertRow<WorkoutTemplate>('workout_templates', {
       name: `${source.name} (copy)`,
-      notes: source.notes,
+      // A copy is the user's own workout; the demo marker would let "Remove demo data" take it.
+      notes: source.notes === DEMO_NOTE ? null : source.notes,
     });
     for (const item of await listWorkoutItems(id)) {
       await insertRow<WorkoutTemplateItem>('workout_template_items', {

@@ -4,6 +4,7 @@ import { db } from '../../db/schema';
 import { seedExercises } from '../../db/seed';
 import { markSynced, resetDb } from '../../test/fixtures';
 import { createSessionFromTemplate } from '../log/sessionsRepo';
+import { duplicateWorkout } from '../plan/workoutsRepo';
 import { loadProgressData } from '../progress/progressData';
 import { fatigueAlerts } from '../progress/rpeStats';
 import { adherenceInRange } from '../progress/strengthStats';
@@ -99,5 +100,16 @@ describe('loading and removing demo data', () => {
     expect(await db.runs.where('_deleted').equals(0).count()).toBe(0);
     expect(await db.body_metrics.where('_deleted').equals(0).count()).toBe(0);
     expect(await db.workout_templates.where('_deleted').equals(0).count()).toBe(0);
+  });
+
+  it("keeps the user's copy of a demo workout", async () => {
+    await loadDemoData(TODAY);
+    const demo = (await db.workout_templates.toArray()).find((t) => t.name === 'Demo — Squat & Bench')!;
+    const copy = await duplicateWorkout(demo.id);
+
+    await removeDemoData();
+
+    expect((await db.workout_templates.get(copy.id))?.deleted_at).toBeNull();
+    expect(await db.workout_template_items.where('template_id').equals(copy.id).filter((i) => !i.deleted_at).count()).toBe(3);
   });
 });
