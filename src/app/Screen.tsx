@@ -1,6 +1,7 @@
 import ComingSoon from '../components/ComingSoon';
 import ExerciseForm from '../features/library/ExerciseForm';
 import LibraryScreen from '../features/library/LibraryScreen';
+import RunLogger from '../features/log/RunLogger';
 import SessionLogger from '../features/log/SessionLogger';
 import TodayScreen from '../features/log/TodayScreen';
 import PlanDaysScreen from '../features/plan/PlanDaysScreen';
@@ -17,6 +18,10 @@ export default function Screen({ route }: { route: Route }) {
       return <TodayScreen />;
     case 'session':
       return <SessionLogger key={route.id} id={route.id} from={route.from} />;
+    case 'run':
+      return <RunLogger key={route.id} sessionId={route.id} from={route.from} />;
+    case 'run-new':
+      return <RunLogger key={`${route.exerciseId}:${route.date}`} exerciseId={route.exerciseId} date={route.date} />;
     case 'plan':
       return <WeekView key={route.week ?? 'this-week'} week={route.week} />;
     case 'plan-days':
