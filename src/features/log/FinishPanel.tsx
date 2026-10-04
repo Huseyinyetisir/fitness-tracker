@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSingleFlight } from '../../app/useSingleFlight';
 import Button from '../../components/Button';
 import { Segmented, TextAreaField } from '../../components/Fields';
 import { isWorkingSet } from '../../lib/strength';
@@ -25,12 +26,13 @@ export default function FinishPanel({
   const [status, setStatus] = useState<FinishedStatus>(current === 'planned' ? suggested : current);
   const [energy, setEnergy] = useState<number | null>(view.session.energy);
   const [notes, setNotes] = useState(view.session.notes ?? '');
-  const [saving, setSaving] = useState(false);
+  const { busy, run } = useSingleFlight();
 
-  async function save() {
-    setSaving(true);
-    await finishSession(view.session.id, { status, energy, notes: notes.trim() || null });
-    onDone();
+  function save() {
+    return run(async () => {
+      await finishSession(view.session.id, { status, energy, notes: notes.trim() || null });
+      onDone();
+    });
   }
 
   return (
@@ -58,18 +60,21 @@ export default function FinishPanel({
       <TextAreaField label="Session notes" value={notes} onChange={setNotes} />
       <div className="grid grid-cols-[1fr_2fr] gap-2">
         <Button onClick={onCancel}>Back</Button>
-        <Button variant="primary" disabled={saving} onClick={() => void save()}>
+        <Button variant="primary" disabled={busy} onClick={() => void save()}>
           Save
         </Button>
       </div>
       <Button
         variant="danger"
         block
-        onClick={async () => {
-          if (!window.confirm('Delete this session and everything logged in it?')) return;
-          await removeSession(view.session.id);
-          onDone();
-        }}
+        disabled={busy}
+        onClick={() =>
+          void run(async () => {
+            if (!window.confirm('Delete this session and everything logged in it?')) return;
+            await removeSession(view.session.id);
+            onDone();
+          })
+        }
       >
         Delete session
       </Button>

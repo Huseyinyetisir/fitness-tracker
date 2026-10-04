@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../../app/AppContext';
 import { routeHref, sessionRoute } from '../../app/routes';
+import { useSingleFlight } from '../../app/useSingleFlight';
 import Button, { IconButton, ROW_LINK } from '../../components/Button';
 import Loading from '../../components/Loading';
 import PickList from '../../components/PickList';
@@ -21,6 +22,7 @@ export default function WeekView({ week }: { week?: ISODate }) {
   const weekStart = startOfWeek(week ?? todayDate);
   const weekEnd = addDays(weekStart, 6);
   const [addingTo, setAddingTo] = useState<ISODate | null>(null);
+  const { run } = useSingleFlight();
 
   useEffect(() => {
     void materializeWeek(userId, weekStart, todayDate);
@@ -67,10 +69,12 @@ export default function WeekView({ week }: { week?: ISODate }) {
           <h3 className="font-medium">Add to {formatDayShort(addingTo)}</h3>
           <PickList
             items={(templates ?? []).map((t) => ({ id: t.id, label: t.name }))}
-            onPick={async (templateId) => {
-              await createSessionFromTemplate(addingTo, templateId, { wasPlanned: true });
-              setAddingTo(null);
-            }}
+            onPick={(templateId) =>
+              void run(async () => {
+                await createSessionFromTemplate(addingTo, templateId, { wasPlanned: true });
+                setAddingTo(null);
+              })
+            }
             empty="Create a workout first."
           />
           <Button variant="ghost" onClick={() => setAddingTo(null)}>

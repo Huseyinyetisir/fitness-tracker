@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { navigate } from '../../app/useRoute';
+import { useSingleFlight } from '../../app/useSingleFlight';
 import Button from '../../components/Button';
 import { TextField } from '../../components/Fields';
 import Loading from '../../components/Loading';
@@ -11,6 +12,7 @@ import { createWorkout } from './workoutsRepo';
 
 export default function WorkoutsScreen() {
   const [name, setName] = useState('');
+  const { busy, run } = useSingleFlight();
   const rows = useLiveQuery(async () => {
     const templates = await db.workout_templates.where('_deleted').equals(0).toArray();
     const items = await db.workout_template_items.where('_deleted').equals(0).toArray();
@@ -19,10 +21,12 @@ export default function WorkoutsScreen() {
       .map((t) => ({ template: t, count: items.filter((i) => i.template_id === t.id).length }));
   }, []);
 
-  async function create() {
-    const workout = await createWorkout(name);
-    setName('');
-    navigate({ name: 'workout', id: workout.id });
+  function create() {
+    return run(async () => {
+      const workout = await createWorkout(name);
+      setName('');
+      navigate({ name: 'workout', id: workout.id });
+    });
   }
 
   if (!rows) return <Loading />;
@@ -40,7 +44,7 @@ export default function WorkoutsScreen() {
         <div className="flex-1">
           <TextField label="New workout" placeholder="e.g. Push A" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
-        <Button type="submit" variant="primary">
+        <Button type="submit" variant="primary" disabled={busy}>
           Create
         </Button>
       </form>

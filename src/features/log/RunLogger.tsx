@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../../app/AppContext';
 import type { Route } from '../../app/routes';
 import { navigate } from '../../app/useRoute';
+import { useSingleFlight } from '../../app/useSingleFlight';
 import Button, { IconButton } from '../../components/Button';
 import { NumberField, Segmented, TextAreaField, TextField } from '../../components/Fields';
 import Loading from '../../components/Loading';
@@ -88,18 +89,19 @@ function RunForm({ data, exercise, back }: { data: RunData; exercise: Local<Exer
   const [energy, setEnergy] = useState<number | null>(data.session?.energy ?? null);
   const [notes, setNotes] = useState(data.session?.notes ?? '');
   const [errors, setErrors] = useState<RunErrors>({});
-  const [saving, setSaving] = useState(false);
+  const { busy, run } = useSingleFlight();
   const set = (patch: Partial<RunDraft>) => setDraft({ ...draft, ...patch });
 
-  async function save() {
-    const found = validateRun(draft);
-    setErrors(found);
-    if (Object.keys(found).length > 0) return;
-    setSaving(true);
-    const sessionId = await saveRun({ sessionId: data.session?.id ?? null, date: data.date, exerciseId: exercise.id, draft });
-    await finishSession(sessionId, { status: 'done', energy, notes: notes.trim() || null });
-    requestSync();
-    navigate(back);
+  function save() {
+    return run(async () => {
+      const found = validateRun(draft);
+      setErrors(found);
+      if (Object.keys(found).length > 0) return;
+      const sessionId = await saveRun({ sessionId: data.session?.id ?? null, date: data.date, exerciseId: exercise.id, draft });
+      await finishSession(sessionId, { status: 'done', energy, notes: notes.trim() || null });
+      requestSync();
+      navigate(back);
+    });
   }
 
   const targetKm = data.target?.target_distance_km;
@@ -180,7 +182,7 @@ function RunForm({ data, exercise, back }: { data: RunData; exercise: Local<Exer
         </div>
         <TextAreaField label="Notes" value={notes} onChange={setNotes} />
 
-        <Button variant="primary" block className="min-h-14 text-lg" disabled={saving} onClick={() => void save()}>
+        <Button variant="primary" block className="min-h-14 text-lg" disabled={busy} onClick={() => void save()}>
           Save run
         </Button>
 
@@ -188,11 +190,14 @@ function RunForm({ data, exercise, back }: { data: RunData; exercise: Local<Exer
           <div className="grid grid-cols-2 gap-2">
             {data.session.status === 'planned' ? (
               <Button
-                onClick={async () => {
-                  await finishSession(data.session!.id, { status: 'skipped', energy: null, notes: notes.trim() || null });
-                  requestSync();
-                  navigate(back);
-                }}
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await finishSession(data.session!.id, { status: 'skipped', energy: null, notes: notes.trim() || null });
+                    requestSync();
+                    navigate(back);
+                  })
+                }
               >
                 Skip this run
               </Button>
@@ -201,12 +206,15 @@ function RunForm({ data, exercise, back }: { data: RunData; exercise: Local<Exer
             )}
             <Button
               variant="danger"
-              onClick={async () => {
-                if (!window.confirm('Delete this session and the run logged in it?')) return;
-                await removeSession(data.session!.id);
-                requestSync();
-                navigate(back);
-              }}
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  if (!window.confirm('Delete this session and the run logged in it?')) return;
+                  await removeSession(data.session!.id);
+                  requestSync();
+                  navigate(back);
+                })
+              }
             >
               Delete
             </Button>

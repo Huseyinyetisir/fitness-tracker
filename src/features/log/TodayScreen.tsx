@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useApp } from '../../app/AppContext';
 import { routeHref, sessionRoute } from '../../app/routes';
 import { navigate } from '../../app/useRoute';
+import { useSingleFlight } from '../../app/useSingleFlight';
 import Button, { PRIMARY_LINK } from '../../components/Button';
 import Loading from '../../components/Loading';
 import PickList from '../../components/PickList';
@@ -22,6 +23,7 @@ export default function TodayScreen() {
   const { userId } = useApp();
   const date = today();
   const [picking, setPicking] = useState<'run' | 'workout' | null>(null);
+  const { run } = useSingleFlight();
 
   useEffect(() => {
     void materializeWeek(userId, startOfWeek(date), date);
@@ -40,9 +42,11 @@ export default function TodayScreen() {
     [],
   );
 
-  async function startWorkout(templateId: UUID | null) {
-    const session = await createSessionFromTemplate(date, templateId, { wasPlanned: false });
-    navigate({ name: 'session', id: session.id });
+  function startWorkout(templateId: UUID | null) {
+    return run(async () => {
+      const session = await createSessionFromTemplate(date, templateId, { wasPlanned: false });
+      navigate({ name: 'session', id: session.id });
+    });
   }
 
   return (

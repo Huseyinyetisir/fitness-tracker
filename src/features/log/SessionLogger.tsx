@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useApp } from '../../app/AppContext';
 import type { Route } from '../../app/routes';
 import { navigate } from '../../app/useRoute';
+import { useSingleFlight } from '../../app/useSingleFlight';
 import Button from '../../components/Button';
 import Loading from '../../components/Loading';
 import NotFound from '../../components/NotFound';
@@ -40,6 +41,7 @@ export default function SessionLogger({ id, from }: { id: UUID; from?: 'log' }) 
   const view = useLiveQuery(() => loadSessionView(id), [id]);
   const [index, setIndex] = useState<number | null>(null);
   const [mode, setMode] = useState<'log' | 'add' | 'finish'>('log');
+  const adding = useSingleFlight();
   const back: Route = from === 'log' ? { name: 'log' } : { name: 'today' };
 
   // A pure run belongs on the run logger.
@@ -102,11 +104,13 @@ export default function SessionLogger({ id, from }: { id: UUID; from?: 'log' }) 
       {mode === 'add' && (
         <ExercisePicker
           onCancel={() => setMode('log')}
-          onPick={async (exercise) => {
-            await addExerciseToSession(id, exercise);
-            setIndex(view.blocks.length);
-            setMode('log');
-          }}
+          onPick={(exercise) =>
+            adding.run(async () => {
+              await addExerciseToSession(id, exercise);
+              setIndex(view.blocks.length);
+              setMode('log');
+            })
+          }
         />
       )}
 

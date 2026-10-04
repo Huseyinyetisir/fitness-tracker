@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { routeHref } from '../../app/routes';
+import { useSingleFlight } from '../../app/useSingleFlight';
 import Button, { PRIMARY_LINK } from '../../components/Button';
 import { Checkbox, TextAreaField } from '../../components/Fields';
 import Stepper from '../../components/Stepper';
@@ -32,6 +33,7 @@ export default function ExercisePanel({
   const [editing, setEditing] = useState<UUID | null>(null);
   const [draft, setDraft] = useState<SetDraft | null>(null);
   const [errors, setErrors] = useState<SetErrors>({});
+  const { busy, run } = useSingleFlight();
 
   // Recompute the suggested set when the exercise, the number of sets, or last
   // time's sets change — but never while a logged set is being edited, and not
@@ -63,18 +65,20 @@ export default function ExercisePanel({
     );
   }
 
-  async function submit() {
-    if (!draft) return;
-    const found = validateSet(draft);
-    setErrors(found);
-    if (Object.keys(found).length > 0) return;
-    if (editing) {
-      await updateSet(editing, draft);
-      setEditing(null);
-    } else {
-      await logSet(child.id, draft);
-      onLogged();
-    }
+  function submit() {
+    return run(async () => {
+      if (!draft) return;
+      const found = validateSet(draft);
+      setErrors(found);
+      if (Object.keys(found).length > 0) return;
+      if (editing) {
+        await updateSet(editing, draft);
+        setEditing(null);
+      } else {
+        await logSet(child.id, draft);
+        onLogged();
+      }
+    });
   }
 
   let workingNumber = 0;
@@ -131,15 +135,18 @@ export default function ExercisePanel({
               <Button onClick={() => setEditing(null)}>Cancel</Button>
               <Button
                 variant="danger"
-                onClick={async () => {
-                  if (!window.confirm('Delete this set?')) return;
-                  await deleteSet(editing);
-                  setEditing(null);
-                }}
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    if (!window.confirm('Delete this set?')) return;
+                    await deleteSet(editing);
+                    setEditing(null);
+                  })
+                }
               >
                 Delete
               </Button>
-              <Button variant="primary" onClick={() => void submit()}>
+              <Button variant="primary" disabled={busy} onClick={() => void submit()}>
                 Save
               </Button>
             </div>
@@ -154,7 +161,7 @@ export default function ExercisePanel({
               >
                 Same as last
               </Button>
-              <Button variant="primary" className="min-h-14 text-lg" onClick={() => void submit()}>
+              <Button variant="primary" className="min-h-14 text-lg" disabled={busy} onClick={() => void submit()}>
                 Log set
               </Button>
             </div>
@@ -174,11 +181,14 @@ export default function ExercisePanel({
 
       <Button
         variant="ghost"
-        onClick={async () => {
-          if (!window.confirm(`Remove ${name} and its sets from this session?`)) return;
-          await removeExerciseFromSession(child.id);
-          onRemoved();
-        }}
+        disabled={busy}
+        onClick={() =>
+          void run(async () => {
+            if (!window.confirm(`Remove ${name} and its sets from this session?`)) return;
+            await removeExerciseFromSession(child.id);
+            onRemoved();
+          })
+        }
       >
         Remove exercise
       </Button>
