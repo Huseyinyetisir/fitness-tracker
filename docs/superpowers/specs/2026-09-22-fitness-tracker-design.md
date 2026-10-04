@@ -353,3 +353,14 @@ Each phase ends with the app running and a short note on what to check.
 ## 16. Out of scope
 
 GPS route tracking. Strava, Garmin, or Health Connect import. Multiple users or sharing. Play Store distribution. Push notifications. Wearable companion. Realtime sync. Server-side computation of any kind.
+
+## 17. Derived rows: system writes and deterministic ids
+
+Some rows are derived by the app rather than typed by the user: the default week plan and its seven days, the preference row, and the planned sessions materialized from the weekly template, with their exercises.
+
+- **Deterministic ids.** These rows get UUIDv5 ids derived from stable names (`<userId>:planned:<date>`), so every device creates the same row instead of a duplicate. The SHA-1 behind them is synchronous: awaiting `crypto.subtle` inside a Dexie transaction commits the transaction early.
+- **System writes.** They are stamped with `systemISO()` — wall-clock time minus fifty years, strictly increasing. Every genuine user edit outranks every system write in last-write-wins, including the server's stale-write guard, so a fresh install materializing a week can never overwrite a session logged on another device.
+- **Ownership.** A session is the user's once it carries a real timestamp: started, edited, noted, finished or removed. The first set, added exercise or note claims it. The app never rewrites a session the user owns, and never rewrites a past date.
+- **Materialization rules** live in one pure function, `decide()`: insert what is missing; revive a row the app removed when its day is planned again; rewrite or remove untouched future rows when the template changes; otherwise leave it.
+
+Schema version 2 adds an `exercise_id` index on `session_exercises` for "last time". Versions are only ever added, never edited: devices hold real version 1 databases.
