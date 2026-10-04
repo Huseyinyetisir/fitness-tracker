@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { vibrate as buzz } from '../../platform/vibrate';
 import { extendRest, isStale, parseStoredTimer, remainingSeconds, startRest, type RestTimer } from './restTimer';
 
 const STORAGE_KEY = 'fit-tracker.rest-timer';
@@ -61,7 +62,7 @@ export function useRestTimer(vibrate: boolean): RestTimerControls {
   useEffect(() => {
     if (!timer || !done || notifiedFor.current === timer.endsAt) return;
     notifiedFor.current = timer.endsAt;
-    if (vibrate && typeof navigator.vibrate === 'function') navigator.vibrate([300, 150, 300]);
+    if (vibrate) buzz();
   }, [timer, done, vibrate]);
 
   const start = useCallback((seconds: number) => {
