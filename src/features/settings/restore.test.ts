@@ -1,8 +1,9 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../db/schema';
-import { seedExercises } from '../../db/seed';
+import { SEED_EXERCISES, seedExercises } from '../../db/seed';
 import { SYNCED_TABLES } from '../../sync/tables';
+import { clearLocalData } from '../../sync/wipe';
 import { base, makeExercise, makeWorkout, markSynced, resetDb } from '../../test/fixtures';
 import { sessionRow } from '../../test/rows';
 import type { Local, Session } from '../../types/domain';
@@ -67,6 +68,43 @@ describe('importBackup', () => {
     backup.tables.body_metrics = [{ ...base('b1'), date: '2026-10-01', weight_kg: 80, resting_hr: null, note: null } as never];
     await importBackup(backup);
     expect(await importBackup(backup)).toEqual({ added: 0, updated: 0, unchanged: 1 });
+  });
+});
+
+describe('importing your own backup after deleting everything', () => {
+  let backup: Backup;
+
+  beforeEach(async () => {
+    await resetDb();
+    await markSynced();
+    await seedExercises();
+    backup = await buildBackup(OLD);
+    // Delete all, then the first sync seeds a fresh library with new ids.
+    await clearLocalData();
+    await markSynced();
+    await seedExercises();
+  });
+
+  it("keeps the backup's library and retires the fresh copy, so nothing is doubled", async () => {
+    await importBackup(backup);
+
+    const live = await db.exercises.where('_deleted').equals(0).toArray();
+    expect(live).toHaveLength(SEED_EXERCISES.length);
+    const backupIds = new Set(backup.tables.exercises.map((e) => e.id));
+    expect(live.every((e) => backupIds.has(e.id))).toBe(true);
+    // Retired with a tombstone, so the server copy goes too.
+    expect(await db.exercises.where('_deleted').equals(1).count()).toBe(SEED_EXERCISES.length);
+    expect((await db.exercises.where('_deleted').equals(1).first())?._dirty).toBe(1);
+  });
+
+  it('keeps a fresh exercise that something here already uses, even with the same name', async () => {
+    const squat = (await db.exercises.toArray()).find((e) => e.name === 'Back Squat')!;
+    await makeWorkout('Legs', [squat]);
+
+    await importBackup(backup);
+
+    expect((await db.exercises.get(squat.id))?.deleted_at).toBeNull();
+    expect(await db.exercises.where('_deleted').equals(0).count()).toBe(SEED_EXERCISES.length + 1);
   });
 });
 

@@ -1,9 +1,10 @@
+import { softDeleteRow } from '../../db/repo';
 import { db, type SyncedTableName } from '../../db/schema';
 import { newId } from '../../lib/id';
 import { isSystemTimestamp } from '../../lib/time';
 import { deterministicId } from '../../lib/uuidv5';
 import { SYNCED_TABLES } from '../../sync/tables';
-import type { BaseRow, ISODate, Local, Session, UUID, Weekday } from '../../types/domain';
+import type { BaseRow, Exercise, ISODate, Local, Session, UUID, Weekday } from '../../types/domain';
 import { plannedSessionId } from '../plan/materialize';
 import { defaultPlanDayId, defaultPlanId, WEEKDAYS } from '../plan/planRepo';
 import { prefsId } from './prefsRepo';
@@ -31,6 +32,7 @@ export async function importBackup(backup: Backup): Promise<ImportResult> {
   const result: ImportResult = { added: 0, updated: 0, unchanged: 0 };
   const tables = SYNCED_TABLES.map((name) => db[name]);
   await db.transaction('rw', tables, async () => {
+    await retireDuplicateExercises(backup.tables.exercises as Exercise[]);
     for (const name of SYNCED_TABLES) {
       const table = db[name] as unknown as import('dexie').Table<Local<BaseRow>, UUID>;
       for (const row of backup.tables[name]) {
@@ -46,6 +48,29 @@ export async function importBackup(backup: Backup): Promise<ImportResult> {
     }
   });
   return result;
+}
+
+const nameKey = (name: string) => name.trim().toLowerCase();
+
+/**
+ * After "Delete all", the first sync seeds a fresh library under new ids; a
+ * backup of the same account then brings its own copy of every exercise, and
+ * the library would hold each one twice. A fresh exercise is retired in favour
+ * of the backup's one with the same name — a normal soft delete, so it leaves
+ * the server too — but only while nothing here uses it.
+ */
+async function retireDuplicateExercises(imported: Exercise[]): Promise<void> {
+  const importedIds = new Set(imported.map((e) => e.id));
+  const importedNames = new Set(imported.filter((e) => !e.deleted_at).map((e) => nameKey(e.name)));
+  const used = new Set<UUID>([
+    ...(await db.workout_template_items.toArray()).map((r) => r.exercise_id),
+    ...(await db.session_exercises.toArray()).map((r) => r.exercise_id),
+    ...(await db.runs.toArray()).map((r) => r.exercise_id),
+  ]);
+  const duplicates = (await db.exercises.where('_deleted').equals(0).toArray()).filter(
+    (e) => importedNames.has(nameKey(e.name)) && !importedIds.has(e.id) && !used.has(e.id),
+  );
+  for (const e of duplicates) await softDeleteRow('exercises', e.id);
 }
 
 /** Columns that hold another row's id. */
