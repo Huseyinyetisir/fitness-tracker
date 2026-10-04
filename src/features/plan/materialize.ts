@@ -105,7 +105,8 @@ export function ownedByUser(session: Session, hasLoggedWork: boolean): boolean {
  *
  * A row is the user's — and is never touched again — once it carries a real
  * timestamp (any edit, start or removal), leaves 'planned', or has work logged
- * in it. Past dates are never rewritten either, so history stays as planned.
+ * in it. Past dates are never rewritten, nor filled in, so history stays as
+ * planned.
  * Everything else is the app's to keep in step with the template.
  */
 export function decide(args: {
@@ -117,7 +118,10 @@ export function decide(args: {
   hasLoggedWork: boolean;
 }): Decision {
   const { existing, desired } = args;
-  if (!existing) return desired ? 'insert' : 'leave';
+  // A missing past date stays missing: inserting it from today's template
+  // would invent a planned — so 'missed' — session the user never had, and on a
+  // device not yet synced would race the pull bringing the real one.
+  if (!existing) return desired && args.date >= args.today ? 'insert' : 'leave';
 
   if (ownedByUser(existing, args.hasLoggedWork) || args.date < args.today) return 'leave';
 
@@ -125,7 +129,9 @@ export function decide(args: {
   if (!desired) return 'remove';
 
   const unchanged =
-    existing.template_id === desired.templateId && args.existingSignature === desiredSignature(desired);
+    existing.template_id === desired.templateId &&
+    existing.kind === desired.kind &&
+    args.existingSignature === desiredSignature(desired);
   return unchanged ? 'leave' : 'rewrite';
 }
 

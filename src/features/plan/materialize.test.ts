@@ -6,6 +6,8 @@ import { isSystemTimestamp, systemISO } from '../../lib/time';
 import { mergeRow } from '../../sync/merge';
 import { USER, base, makeExercise, makeWorkout, markSynced, resetDb } from '../../test/fixtures';
 import type { Local, Session, SessionExercise, SetEntry, WeekPlan, WorkoutTemplate } from '../../types/domain';
+import { toInput } from '../library/exerciseRules';
+import { updateExercise } from '../library/exercisesRepo';
 import { loadSessionView } from '../log/sessionView';
 import { logSet } from '../log/setsRepo';
 import {
@@ -165,6 +167,15 @@ describe('decide', () => {
     expect(decide(args({ existing: session({ deleted_at: REAL, updated_at: REAL }) }))).toBe('leave');
   });
 
+  it('never inserts on a past date', () => {
+    expect(decide(args({ existing: undefined, date: MON, today: WED }))).toBe('leave');
+    expect(decide(args({ existing: undefined, date: WED, today: WED }))).toBe('insert');
+  });
+
+  it('rewrites an untouched future row whose kind no longer matches', () => {
+    expect(decide(args({ existing: session({ kind: 'run' }) }))).toBe('rewrite');
+  });
+
   it('never rewrites the past', () => {
     expect(decide(args({ existing: session({ template_id: 't2' }), today: '2026-10-08' }))).toBe('leave');
   });
@@ -283,6 +294,31 @@ describe('materializeWeek', () => {
     await setDayTemplate(defaultPlanDayId(USER, 1), push.id);
     await materializeWeek(USER, MON, WED);
     expect((await db.sessions.get(plannedSessionId(USER, MON)))?.template_id).toBe(legs.id);
+  });
+
+  it('does not insert days already past this week', async () => {
+    const { push } = await setup();
+    await setDayTemplate(defaultPlanDayId(USER, 4), push.id);
+    await materializeWeek(USER, MON, WED);
+    expect(await db.sessions.get(plannedSessionId(USER, MON))).toBeUndefined();
+    expect((await db.sessions.get(plannedSessionId(USER, '2026-10-08')))?.template_id).toBe(push.id);
+  });
+
+  it("does not insert a past week's days when browsing back", async () => {
+    await setup();
+    await materializeWeek(USER, MON, '2026-10-12');
+    expect(await db.sessions.count()).toBe(0);
+  });
+
+  it("updates the kind of an untouched future session when an exercise's modality changes", async () => {
+    const { push, bench } = await setup();
+    await setDayTemplate(defaultPlanDayId(USER, 3), push.id);
+    await materializeWeek(USER, MON, MON);
+    expect((await db.sessions.get(plannedSessionId(USER, WED)))?.kind).toBe('strength');
+
+    await updateExercise(bench.id, { ...toInput(bench), modality: 'cardio', run_type: 'easy' });
+    expect(await materializeWeek(USER, MON, MON)).toBe(1);
+    expect((await db.sessions.get(plannedSessionId(USER, WED)))?.kind).toBe('run');
   });
 
   it('leaves a session alone once work is logged into it', async () => {
