@@ -57,3 +57,10 @@ export function parseOptionalNumber(text: string): number | null {
   if (t === '') return null;
   return /^-?(\d+\.?\d*|\.\d+)$/.test(t) ? Number(t) : Number.NaN;
 }
+
+/** A typed value to commit, or null while it is not yet a usable number within [min, max]. */
+export function parseInRange(text: string, min: number, max: number): number | null {
+  const parsed = parseOptionalNumber(text);
+  if (parsed === null || !Number.isFinite(parsed) || parsed < min || parsed > max) return null;
+  return Math.round(parsed * 100) / 100;
+}

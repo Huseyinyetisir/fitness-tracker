@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react';
-import { parseOptionalNumber } from '../lib/format';
+import { parseInRange } from '../lib/format';
 
 /**
  * Large −/+ buttons around a value the user can also tap and type into.
  * Built for one thumb: the buttons are 56 px and the value is readable at
  * arm's length.
+ *
+ * Typing commits only a value already within [min, max], and never rewrites
+ * the text mid-entry: with min 15, typing "90" must not clamp the "9" to 15
+ * and end at 150. On blur, unusable text falls back to the current value.
+ * The −/+ buttons clamp.
  */
 export default function Stepper({
   label,
@@ -24,8 +29,8 @@ export default function Stepper({
   const [text, setText] = useState(String(value));
 
   useEffect(() => {
-    setText((current) => (parseOptionalNumber(current) === value ? current : String(value)));
-  }, [value]);
+    setText((current) => (parseInRange(current, min, max) === value ? current : String(value)));
+  }, [value, min, max]);
 
   const clamp = (v: number) => Math.min(max, Math.max(min, Math.round(v * 100) / 100));
 
@@ -47,8 +52,11 @@ export default function Stepper({
         value={text}
         onChange={(e) => {
           setText(e.target.value);
-          const parsed = parseOptionalNumber(e.target.value);
-          if (parsed !== null && Number.isFinite(parsed)) onChange(clamp(parsed));
+          const parsed = parseInRange(e.target.value, min, max);
+          if (parsed !== null) onChange(parsed);
+        }}
+        onBlur={() => {
+          if (parseInRange(text, min, max) !== value) setText(String(value));
         }}
         className="min-h-14 w-full min-w-0 flex-1 rounded-xl bg-transparent text-center text-3xl font-semibold tabular-nums"
       />
