@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { currentStatus, syncAll } from './engine';
+import { SyncLock } from './lock';
 import { supabaseSyncClient } from './supabaseSyncClient';
 import type { SyncStatus } from './types';
 
@@ -13,28 +14,42 @@ import type { SyncStatus } from './types';
 export function useSync(userId: string | null) {
   const [status, setStatus] = useState<SyncStatus | null>(null);
   const [busy, setBusy] = useState(false);
-  // A ref, not the busy state: two events firing in the same tick both read
-  // the same stale state value and start overlapping syncs.
-  const running = useRef(false);
+  const [lock] = useState(() => new SyncLock());
 
   const refresh = useCallback(async () => {
     setStatus(await currentStatus());
   }, []);
 
   const syncNow = useCallback(async () => {
-    if (!userId || running.current) return;
-    running.current = true;
+    // Skipped, not queued, while anything holds the lock: the next trigger
+    // will sync, and a queued sync after a wipe would only repeat its work.
+    if (!userId || lock.busy) return;
     setBusy(true);
     try {
-      await syncAll(supabaseSyncClient, userId);
-    } catch {
-      // The engine records the message; refresh surfaces it.
+      await lock.run(async () => {
+        try {
+          await syncAll(supabaseSyncClient, userId);
+        } catch {
+          // The engine records the message; refresh surfaces it.
+        }
+      });
     } finally {
-      running.current = false;
       setBusy(false);
       await refresh();
     }
-  }, [refresh, userId]);
+  }, [lock, refresh, userId]);
+
+  /** Runs a task that must not overlap a sync, waiting for one in progress to finish first. */
+  const exclusive = useCallback(
+    async <T,>(task: () => Promise<T>): Promise<T> => {
+      try {
+        return await lock.run(task);
+      } finally {
+        await refresh();
+      }
+    },
+    [lock, refresh],
+  );
 
   useEffect(() => {
     if (!userId) return;
@@ -59,5 +74,5 @@ export function useSync(userId: string | null) {
     };
   }, [userId, syncNow, refresh]);
 
-  return { status, busy, syncNow, refresh };
+  return { status, busy, syncNow, refresh, exclusive };
 }

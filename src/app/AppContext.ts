@@ -7,6 +7,8 @@ export interface AppContextValue {
   syncBusy: boolean;
   /** Ask for a sync now. Ignored while one is already running. */
   requestSync: () => void;
+  /** Run a task that must not overlap a sync: wiping, restoring, signing out. */
+  exclusive: <T>(task: () => Promise<T>) => Promise<T>;
 }
 
 export const AppContext = createContext<AppContextValue | null>(null);
