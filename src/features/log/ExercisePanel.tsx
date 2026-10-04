@@ -38,9 +38,11 @@ export default function ExercisePanel({
   const [errors, setErrors] = useState<SetErrors>({});
   const { busy, run } = useSingleFlight();
 
-  // Recompute the suggested set when the exercise, the number of sets, or last
+  // Recompute the suggested set when the exercise, any logged set, or last
   // time's sets change — but never while a logged set is being edited, and not
-  // just because a sync re-delivered identical data.
+  // just because a sync re-delivered identical data. The sets key covers each
+  // set's content, so editing a set or its warm-up flag refreshes the draft.
+  const setsKey = sets.map((s) => `${s.id}:${s.reps}:${s.weight_kg}:${s.rpe}:${s.is_warmup}`).join(',');
   const lastTimeKey = lastTime?.map((s) => s.id).join(',');
   useEffect(() => {
     if (editing || lastTime === undefined) return;
@@ -55,7 +57,7 @@ export default function ExercisePanel({
       }),
     );
     setErrors({});
-  }, [child.id, sets.length, lastTimeKey, editing]);
+  }, [child.id, setsKey, lastTimeKey, editing]);
 
   if (exercise?.modality === 'cardio') {
     return (
