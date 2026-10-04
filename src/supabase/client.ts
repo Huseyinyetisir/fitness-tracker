@@ -9,7 +9,21 @@ if (!url || !anonKey) {
   );
 }
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * supabase-js sets no timeout of its own. A request that never settles would
+ * hold the sync lock for good, and Sign out, Delete all and Restore would wait
+ * on it forever. Aborting fails that sync instead; the next trigger retries.
+ */
+const fetchWithTimeout: typeof fetch = (input, init) => {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+  return fetch(input, { ...init, signal });
+};
+
 export const supabase = createClient(url, anonKey, {
+  global: { fetch: fetchWithTimeout },
   auth: {
     persistSession: true,
     autoRefreshToken: true,
