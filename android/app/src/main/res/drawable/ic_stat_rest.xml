@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status bar icon for the rest-over notification: the launcher dumbbell, in white. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="60"
+    android:viewportHeight="60">
+    <group android:translateX="-24" android:translateY="-24">
+        <path android:fillColor="#FFFFFF" android:pathData="M38,51h32v6h-32z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M33,40a2,2 0,0 1,2 -2h3a2,2 0,0 1,2 2v28a2,2 0,0 1,-2 2h-3a2,2 0,0 1,-2 -2z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M68,40a2,2 0,0 1,2 -2h3a2,2 0,0 1,2 2v28a2,2 0,0 1,-2 2h-3a2,2 0,0 1,-2 -2z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M27,46a2,2 0,0 1,2 -2h1a2,2 0,0 1,2 2v16a2,2 0,0 1,-2 2h-1a2,2 0,0 1,-2 -2z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M76,46a2,2 0,0 1,2 -2h1a2,2 0,0 1,2 2v16a2,2 0,0 1,-2 2h-1a2,2 0,0 1,-2 -2z" />
+    </group>
+</vector>

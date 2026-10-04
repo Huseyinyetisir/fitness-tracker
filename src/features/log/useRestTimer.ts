@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { prepareRestAlert, useRestAlert } from '../../platform/restAlert';
 import { vibrate as buzz } from '../../platform/vibrate';
 import { extendRest, isStale, parseStoredTimer, remainingSeconds, startRest, type RestTimer } from './restTimer';
 
@@ -65,12 +66,21 @@ export function useRestTimer(vibrate: boolean): RestTimerControls {
     if (vibrate) buzz();
   }, [timer, done, vibrate]);
 
-  const start = useCallback((seconds: number) => {
-    const next = startRest(Date.now(), seconds);
-    save(next);
-    setNow(Date.now());
-    setTimer(next);
-  }, []);
+  // Keyed on the timer, not on `done`: the timer running out in the background
+  // must not re-run the hook's cleanup, which would clear the alert as it lands.
+  useRestAlert(timer ? timer.endsAt : null, vibrate);
+
+  const start = useCallback(
+    (seconds: number) => {
+      // The first rest asks for notification permission, for the locked-screen alert.
+      if (vibrate) void prepareRestAlert();
+      const next = startRest(Date.now(), seconds);
+      save(next);
+      setNow(Date.now());
+      setTimer(next);
+    },
+    [vibrate],
+  );
 
   const extend = useCallback((seconds: number) => {
     setTimer((current) => {

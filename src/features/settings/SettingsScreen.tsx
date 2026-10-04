@@ -45,6 +45,9 @@ export default function SettingsScreen() {
                 checked={prefs.vibration}
                 onChange={(vibration) => void updatePrefs(userId, { vibration })}
               />
+              <p className="text-xs text-muted">
+                In the Android app, a locked phone gets the alert as a notification — allow notifications when asked.
+              </p>
             </>
           )}
         </div>

@@ -38,4 +38,10 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!--
+        Lets the rest-over notification fire on time with the screen off.
+        Granted at install from Android 13; Play Store restrictions on it do
+        not apply to a sideloaded app.
+    -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 </manifest>
