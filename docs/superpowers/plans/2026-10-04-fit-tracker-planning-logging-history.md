@@ -8643,3 +8643,25 @@ Deliberately left for Plan 3: progress charts (the Progress tab is a placeholder
 **Placeholder scan:** the only interim screen is `ComingSoon`, introduced in Task 9 and deleted in Task 30 once every route has a screen. No step defers work with "TBD" or "similar to".
 
 **Type consistency:** `SetDraft`, `SetErrors` and `FinishedStatus` are defined once in `setRules.ts`; `SessionCard` once in `cards.ts`; `ExerciseBlock` and `SessionView` once in `sessionView.ts`; `RunDraft`, `RunErrors` and `SplitDraft` once in `runRules.ts`. `materializeWeek(userId, weekStart, today)`, `createSessionFromTemplate(date, templateId, { wasPlanned })`, `finishSession(id, { status, energy, notes })`, `saveRun({ sessionId, date, exerciseId, draft })` and `sessionRoute(session, from?)` have one signature each and are called with it everywhere.
+
+---
+
+## Post-execution amendments
+
+Every task above was executed verbatim; all three phase checkpoints passed in a real browser against the real Supabase project. Two further rounds then changed the code, so the blocks above are the *as-planned* version and these commits are the current state.
+
+**Phase 4 checkpoint.** A plan created on a Sunday applied from that week's Monday, so materialization filled in the past training days and they read as missed on the user's first day (`6695fcb` — a new plan now starts on its creation date; the Task 4 blocks above were updated to match).
+
+**Whole-implementation review**, two defects confirmed against the real modules before fixing:
+
+| Ref | Defect | Fix |
+|---|---|---|
+| Critical | Claiming a session re-stamped only the session row. Its exercises kept system stamps, so another device rewriting the template could delete the exercise the user had logged into; the sets survived under a deleted parent and vanished from every screen | `claimSession` moved to `sessionsRepo` and re-stamps the exercises; finishing and saving a run now claim too; materialization removes exercises another device injected into a session the user owns (`39ad410`) |
+| Important | `decide()` inserted sessions on past dates with today's template, so history showed misses for days that were rest days | Insert only from today forward; `kind` joins the change check (`a85425c`) |
+| Important | Logging the run inside a mixed session finished, skipped or deleted the whole session | `removeRun` (`db986ce`); the run logger saves only the run in a mixed session and returns to it (`d8f072a`) |
+| Important | A double tap on Log set, a picker row or Create wrote twice | `useSingleFlight` guards every write button and always clears on error (`1fd4d62`) |
+| Important | Typing into a Stepper clamped each keystroke: "90" in a min-15 field saved 150 | `parseInRange` commits only in-range values; blur restores (`55fd68c`) |
+| Minor | Next-set suggestion stale after editing a set (`f4f2e64`); note lost when backgrounded (`b16e09d`); "Log a workout" duplicated today's planned session (`3203c93`) | — |
+
+Final state: 387 tests in 40 files, stable across repeated runs; `tsc -b` clean; build contains every screen.
+
