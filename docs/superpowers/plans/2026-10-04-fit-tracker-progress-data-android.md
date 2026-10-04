@@ -7355,3 +7355,22 @@ Beyond the spec, found while validating: sign-out clears the device (cross-accou
 **Placeholder scan:** no step defers work. `files.ts` is written twice on purpose — the browser version in Task 19, the Android version in Task 25 — with the same signature. `useRestTimer.ts` and `SettingsScreen.tsx` change in more than one task; each task shows the whole file as it stands then.
 
 **Type consistency:** `ProgressData`, `Lift` and `RunPoint` are defined once in `progressData.ts`; `ViewProps` in `ProgressScreen.tsx`; `Backup` in `backup.ts`; `ImportResult` in `restore.ts`; `WipeClient` in `wipe.ts`; `RangeKey` in `lib/ranges.ts`; `ProgressView` in `routes.ts`. `saveTextFile(name, text, mime): Promise<boolean>`, `forAccount(backup, userId, today)`, `wipeAccount(client, userId)` and `useRestAlert(endsAt, enabled)` have one signature each.
+
+---
+
+## Post-execution amendments
+
+Tasks 1–27 and 29 were executed verbatim — every file matched the plan's blocks, and the Android project, scripts and lockfile were byte-identical to the validation replay. Phase 7 and 8 checkpoints passed in a browser against the real Supabase project. The blocks above are the *as-planned* version; the commits below are the current state.
+
+**Plan gap.** Task 26's stage list missed `android/app/capacitor.build.gradle` and `android/capacitor.settings.gradle`, which `cap sync` rewrites to wire in the local-notifications plugin. They were committed with Task 26 (`660cab1`).
+
+**Whole-implementation review**, findings confirmed against the real modules (three with reproducing tests) before fixing:
+
+| Ref | Defect | Fix |
+|---|---|---|
+| Critical | Sign-out trusted `syncStatus.pendingCount`, a snapshot no local write refreshed, so it could clear unsynced edits without warning | Live pending count via `liveQuery` in `useSync`; sign-out recounts and clears in one transaction (`clearLocalDataUnlessPending`) (`9aeca7f`) |
+| Important | Delete all, then importing your own backup, doubled the library: the post-wipe bootstrap re-seeds with new ids | `importBackup` retires unreferenced same-name local exercises (`0bc570f`), judged by the merge's winner (`7470ad0`) |
+| Important | A delete-all failing part-way left the server half-deleted while every local row read as synced | On failure every row is marked dirty, so the next sync restores the server (`e91bd44`) |
+| Minor | Copies of demo workouts carried the demo note and were removed with it (`4c67438`); demo weigh-ins collided with the user's own (`846f4c4`); a notification denial was cached for the process (`5d7fd2b`); rest-alert schedule and cancel were unordered (`4eb84dd`); export read tables outside a transaction (`23dab16`); a hung request held the sync lock (`59f5f27`, guarded for old WebViews in `851b638`); other devices after delete-all (wording, `341962b`) | — |
+
+Final state: 510 tests in 53 files, stable across repeated runs; `tsc -b` clean; debug APK built from the repository with the fixes.
