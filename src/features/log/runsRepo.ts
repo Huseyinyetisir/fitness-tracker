@@ -76,3 +76,19 @@ export async function saveRun(args: {
     return sessionId;
   });
 }
+
+/** Removes only the run (and its splits) from a session, leaving the rest of it. */
+export async function removeRun(sessionId: UUID): Promise<void> {
+  await db.transaction('rw', [db.sessions, db.session_exercises, db.runs, db.run_splits], async () => {
+    const runs = (await db.runs.where('session_id').equals(sessionId).toArray()).filter((r) => r._deleted === 0);
+    if (runs.length === 0) return;
+    for (const run of runs) {
+      for (const split of await db.run_splits.where('run_id').equals(run.id).toArray()) {
+        if (split._deleted === 0) await softDeleteRow('run_splits', split.id);
+      }
+      await softDeleteRow('runs', run.id);
+    }
+    // Removing the run is a user edit, so the session becomes the user's.
+    await claimSession(sessionId, { start: false });
+  });
+}

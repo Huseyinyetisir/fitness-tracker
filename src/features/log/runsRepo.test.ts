@@ -6,8 +6,9 @@ import { USER, makeExercise, makeWorkout, markSynced, resetDb } from '../../test
 import { materializeWeek, plannedSessionId } from '../plan/materialize';
 import { defaultPlanDayId, ensureWeekPlan, setDayTemplate } from '../plan/planRepo';
 import { emptyRunDraft, type RunDraft } from './runRules';
-import { saveRun } from './runsRepo';
+import { removeRun, saveRun } from './runsRepo';
 import { createSessionFromTemplate } from './sessionsRepo';
+import { logSet } from './setsRepo';
 
 const MON = '2026-10-05';
 const DRAFT: RunDraft = { ...emptyRunDraft(8), duration: '42:30', rpe: 6, splits: [{ distance: 1, duration: '5:10' }] };
@@ -102,5 +103,35 @@ describe('saveRun into a materialized session', () => {
     );
     expect(children).toHaveLength(2);
     expect(children.map((c) => isSystemTimestamp(c.updated_at))).toEqual([false, false]);
+  });
+});
+
+describe('removeRun', () => {
+  it('removes only the run and its splits, leaving the session and its strength sets', async () => {
+    const { sessionId, children, easy } = await materializedBrick();
+    const squatChild = children[0];
+    const set = await logSet(squatChild.id, { reps: 5, weight_kg: 100, rpe: 8, is_warmup: false });
+    await saveRun({ sessionId, date: MON, exerciseId: easy.id, draft: DRAFT });
+    const [run] = await liveRuns();
+    const splitIds = (await db.run_splits.where('run_id').equals(run.id).toArray()).map((s) => s.id);
+    expect(splitIds).toHaveLength(1);
+
+    await removeRun(sessionId);
+
+    expect((await db.runs.get(run.id))?._deleted).toBe(1);
+    for (const id of splitIds) expect((await db.run_splits.get(id))?._deleted).toBe(1);
+    const session = await db.sessions.get(sessionId);
+    expect(session?._deleted).toBe(0);
+    expect(isSystemTimestamp(session!.updated_at)).toBe(false);
+    expect((await db.session_exercises.get(squatChild.id))?._deleted).toBe(0);
+    expect((await db.set_entries.get(set.id))?._deleted).toBe(0);
+  });
+
+  it('does nothing when the session has no run', async () => {
+    const { sessionId } = await materializedBrick();
+    const before = await db.sessions.get(sessionId);
+    await removeRun(sessionId);
+    expect(await db.runs.count()).toBe(0);
+    expect(await db.sessions.get(sessionId)).toEqual(before);
   });
 });
