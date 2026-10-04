@@ -9,7 +9,7 @@ import { useSync } from './sync/useSync';
 export default function App() {
   const { session, loading } = useAuth();
   const userId = session?.user.id ?? null;
-  const { status, busy, syncNow, refresh } = useSync(userId);
+  const { status, busy, syncNow } = useSync(userId);
   const [count, setCount] = useState<number | null>(null);
 
   // Seeding waits for a sync to have completed, so it runs off the sync
@@ -19,9 +19,11 @@ export default function App() {
     (async () => {
       const seeded = await seedExercises();
       setCount(await db.exercises.where('_deleted').equals(0).count());
-      if (seeded > 0) await refresh();
+      // Seeding only happens after a completed sync, so nothing else will
+      // push these rows until the next trigger. Push them now.
+      if (seeded > 0) await syncNow();
     })();
-  }, [userId, status?.lastSyncedAt, refresh]);
+  }, [userId, status?.lastSyncedAt, syncNow]);
 
   if (loading) {
     return <main className="p-6 text-[var(--color-muted)]">Loading…</main>;
