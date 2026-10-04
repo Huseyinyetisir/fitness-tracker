@@ -25,10 +25,14 @@ function pickColumns(name: SyncedTableName, row: object): BaseRow {
 
 export async function buildBackup(userId: UUID, exportedAt: ISODateTime = new Date().toISOString()): Promise<Backup> {
   const tables = {} as Record<SyncedTableName, BaseRow[]>;
-  for (const name of SYNCED_TABLES) {
-    const rows = await (db[name] as unknown as import('dexie').Table<object, string>).toArray();
-    tables[name] = rows.map((r) => pickColumns(name, r));
-  }
+  // One read transaction, so a write landing part-way cannot leave a child in
+  // the backup without its parent, or the reverse.
+  await db.transaction('r', SYNCED_TABLES.map((name) => db.table(name)), async () => {
+    for (const name of SYNCED_TABLES) {
+      const rows = await (db[name] as unknown as import('dexie').Table<object, string>).toArray();
+      tables[name] = rows.map((r) => pickColumns(name, r));
+    }
+  });
   return { format: BACKUP_FORMAT, version: BACKUP_VERSION, exported_at: exportedAt, user_id: userId, tables };
 }
 

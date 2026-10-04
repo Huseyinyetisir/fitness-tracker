@@ -1,5 +1,6 @@
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import Dexie from 'dexie';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../db/schema';
 import { TABLE_COLUMNS } from '../../sync/columns';
 import { SYNCED_TABLES } from '../../sync/tables';
@@ -22,6 +23,29 @@ describe('buildBackup', () => {
     expect(backup.tables.sessions.map((s) => s.id).sort()).toEqual(['gone', 's1']);
     expect(Object.keys(backup.tables.sessions[0])).toEqual([...TABLE_COLUMNS.sessions]);
     expect(backupRowCount(backup)).toBe(3);
+  });
+
+  it('is a consistent snapshot while a sync writes to several tables', async () => {
+    // A pull lands just after the backup has read sessions, before it reads body entries.
+    let pullDone: Promise<void> = Promise.resolve();
+    const readSessions = db.sessions.toArray.bind(db.sessions);
+    vi.spyOn(db.sessions, 'toArray').mockImplementation((async () => {
+      const rows = await readSessions();
+      pullDone = Dexie.ignoreTransaction(() =>
+        db.transaction('rw', [db.sessions, db.body_metrics], async () => {
+          await db.sessions.put(sessionRow('pulled'));
+          await db.body_metrics.put(bodyRow('pulled-too', '2026-10-01'));
+        }),
+      );
+      return rows;
+    }) as never);
+
+    const backup = await buildBackup(USER, '2026-10-04T08:00:00.000Z');
+    await pullDone;
+    vi.restoreAllMocks();
+
+    expect([backup.tables.sessions.length, backup.tables.body_metrics.length]).toEqual([0, 0]);
+    expect(await db.body_metrics.count()).toBe(1);
   });
 
   it('round-trips through JSON and parseBackup', async () => {

@@ -63,7 +63,8 @@ export default function DataSection() {
         disabled={busy}
         onClick={() =>
           void attempt(async () => {
-            const backup = await buildBackup(userId);
+            // Waits out a sync in progress; the share sheet stays outside the lock.
+            const backup = await exclusive(() => buildBackup(userId));
             const saved = await saveTextFile(backupFileName(today()), JSON.stringify(backup), 'application/json');
             return saved ? `Backup ready: ${formatNumber(backupRowCount(backup))} rows.` : undefined;
           })
