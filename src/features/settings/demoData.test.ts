@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../db/schema';
 import { seedExercises } from '../../db/seed';
 import { markSynced, resetDb } from '../../test/fixtures';
+import { bodyRow } from '../../test/rows';
 import { createSessionFromTemplate } from '../log/sessionsRepo';
 import { duplicateWorkout } from '../plan/workoutsRepo';
 import { loadProgressData } from '../progress/progressData';
@@ -111,5 +112,18 @@ describe('loading and removing demo data', () => {
 
     expect((await db.workout_templates.get(copy.id))?.deleted_at).toBeNull();
     expect(await db.workout_template_items.where('template_id').equals(copy.id).filter((i) => !i.deleted_at).count()).toBe(3);
+  });
+
+  it("leaves out a demo weigh-in on a day that already has the user's own", async () => {
+    const [first, second] = buildDemo(TODAY).body;
+    await db.body_metrics.put(bodyRow('mine', first.date, { weight_kg: 80 }));
+    await db.body_metrics.put(bodyRow('gone', second.date, { deleted_at: '2026-10-01T06:00:00.000Z' }));
+
+    await loadDemoData(TODAY);
+
+    const onFirst = await db.body_metrics.where('date').equals(first.date).toArray();
+    expect(onFirst.map((b) => b.id)).toEqual(['mine']);
+    const onSecond = await db.body_metrics.where('date').equals(second.date).filter((b) => !b.deleted_at).count();
+    expect(onSecond).toBe(1);
   });
 });

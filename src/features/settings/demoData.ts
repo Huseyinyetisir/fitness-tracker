@@ -286,7 +286,10 @@ export async function loadDemoData(todayDate: ISODate): Promise<number> {
         }
       }
 
+      // One weigh-in per day: the user's own entry wins over the demo's.
+      const weighed = new Set((await db.body_metrics.where('_deleted').equals(0).toArray()).map((b) => b.date));
       for (const b of demo.body) {
+        if (weighed.has(b.date)) continue;
         await insertRow<BodyMetric>('body_metrics', {
           date: b.date,
           weight_kg: b.weight_kg,
