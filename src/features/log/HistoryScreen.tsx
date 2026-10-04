@@ -1,6 +1,7 @@
 import { routeHref, sessionRoute } from '../../app/routes';
 import Loading from '../../components/Loading';
 import ScreenHeader from '../../components/ScreenHeader';
+import Stat from '../../components/Stat';
 import StatusBadge from '../../components/StatusBadge';
 import { useLiveQuery } from '../../db/useLiveQuery';
 import { weekdayStreak } from '../../lib/adherence';
@@ -57,15 +58,6 @@ export default function HistoryScreen() {
         ))
       )}
     </section>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-border bg-surface p-3">
-      <p className="text-2xl font-semibold tabular-nums">{value}</p>
-      <p className="text-xs text-muted">{label}</p>
-    </div>
   );
 }
 
