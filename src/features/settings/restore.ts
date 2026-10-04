@@ -57,11 +57,18 @@ const nameKey = (name: string) => name.trim().toLowerCase();
  * backup of the same account then brings its own copy of every exercise, and
  * the library would hold each one twice. A fresh exercise is retired in favour
  * of the backup's one with the same name — a normal soft delete, so it leaves
- * the server too — but only while nothing here uses it.
+ * the server too — but only while nothing here uses it, and only for names
+ * the merge leaves live: a backup row that loses to a newer local deletion
+ * replaces nothing.
  */
 async function retireDuplicateExercises(imported: Exercise[]): Promise<void> {
   const importedIds = new Set(imported.map((e) => e.id));
-  const importedNames = new Set(imported.filter((e) => !e.deleted_at).map((e) => nameKey(e.name)));
+  const importedNames = new Set<string>();
+  for (const e of imported) {
+    const local = await db.exercises.get(e.id);
+    const winner = mergeImported(local, e) ?? local;
+    if (winner && winner.deleted_at === null) importedNames.add(nameKey(winner.name));
+  }
   const used = new Set<UUID>([
     ...(await db.workout_template_items.toArray()).map((r) => r.exercise_id),
     ...(await db.session_exercises.toArray()).map((r) => r.exercise_id),

@@ -1,5 +1,6 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { softDeleteRow } from '../../db/repo';
 import { db } from '../../db/schema';
 import { SEED_EXERCISES, seedExercises } from '../../db/seed';
 import { SYNCED_TABLES } from '../../sync/tables';
@@ -68,6 +69,19 @@ describe('importBackup', () => {
     backup.tables.body_metrics = [{ ...base('b1'), date: '2026-10-01', weight_kg: 80, resting_hr: null, note: null } as never];
     await importBackup(backup);
     expect(await importBackup(backup)).toEqual({ added: 0, updated: 0, unchanged: 1 });
+  });
+
+  it('keeps an exercise deleted and re-created since the backup, when the deletion wins the merge', async () => {
+    const old = await makeExercise('Hip Thrust');
+    const backup = await buildBackup(OLD);
+    await softDeleteRow('exercises', old.id);
+    const fresh = await makeExercise('Hip Thrust');
+
+    await importBackup(backup);
+
+    expect((await db.exercises.get(old.id))?.deleted_at).not.toBeNull();
+    const live = (await db.exercises.where('_deleted').equals(0).toArray()).filter((e) => e.name === 'Hip Thrust');
+    expect(live.map((e) => e.id)).toEqual([fresh.id]);
   });
 });
 
