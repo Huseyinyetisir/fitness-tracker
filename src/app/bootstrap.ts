@@ -1,5 +1,6 @@
 import { seedExercises } from '../db/seed';
 import { ensureWeekPlan } from '../features/plan/planRepo';
+import { ensurePrefs } from '../features/settings/prefsRepo';
 import type { ISODate } from '../types/domain';
 
 /**
@@ -12,5 +13,6 @@ import type { ISODate } from '../types/domain';
 export async function bootstrapAfterSync(userId: string, todayDate: ISODate): Promise<boolean> {
   const seeded = await seedExercises();
   const plan = await ensureWeekPlan(userId, todayDate);
-  return seeded > 0 || Boolean(plan?.created);
+  const prefs = await ensurePrefs(userId);
+  return seeded > 0 || Boolean(plan?.created) || Boolean(prefs?.created);
 }
