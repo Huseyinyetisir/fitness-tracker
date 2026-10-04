@@ -64,3 +64,18 @@ export function parseInRange(text: string, min: number, max: number): number | n
   if (parsed === null || !Number.isFinite(parsed) || parsed < min || parsed > max) return null;
   return Math.round(parsed * 100) / 100;
 }
+
+/** "5 Oct" — chart axis labels. */
+export function formatShortDate(date: ISODate): string {
+  return parseISODate(date).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' });
+}
+
+/** "Nov 2026", from a 'YYYY-MM' month key. */
+export function formatMonth(month: string): string {
+  return parseISODate(`${month}-01`).toLocaleDateString(LOCALE, { month: 'short', year: 'numeric' });
+}
+
+/** "12,346" — grouped, rounded to `decimals` places. */
+export function formatNumber(value: number, decimals = 0): string {
+  return value.toLocaleString(LOCALE, { maximumFractionDigits: decimals, minimumFractionDigits: decimals });
+}

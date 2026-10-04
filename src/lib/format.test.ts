@@ -5,6 +5,9 @@ import {
   formatDayShort,
   formatKg,
   formatKm,
+  formatMonth,
+  formatNumber,
+  formatShortDate,
   formatWeekRange,
   parseOptionalNumber,
 } from './format';
@@ -72,5 +75,23 @@ describe('parseOptionalNumber', () => {
 
   it('returns NaN for text, so validation can flag it', () => {
     expect(parseOptionalNumber('abc')).toBeNaN();
+  });
+});
+
+describe('chart labels', () => {
+  it('formats a short date', () => {
+    expect(formatShortDate('2026-10-05')).toBe('5 Oct');
+  });
+
+  it('formats a month key', () => {
+    expect(formatMonth('2026-11')).toBe('Nov 2026');
+  });
+
+  it('formats whole numbers with grouping', () => {
+    expect(formatNumber(12345.6)).toBe('12,346');
+  });
+
+  it('keeps the decimals asked for', () => {
+    expect(formatNumber(7.25, 1)).toBe('7.3');
   });
 });
