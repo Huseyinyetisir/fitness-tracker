@@ -16,11 +16,14 @@ import { deleteSet, logSet, removeExerciseFromSession, setExerciseNote, updateSe
 export default function ExercisePanel({
   block,
   session,
+  from,
   onLogged,
   onRemoved,
 }: {
   block: ExerciseBlock;
   session: Session;
+  /** Carried to the run logger so the Log tab stays highlighted when opened from history. */
+  from?: 'log';
   onLogged: () => void;
   onRemoved: () => void;
 }) {
@@ -58,7 +61,7 @@ export default function ExercisePanel({
     return (
       <div className="space-y-3 rounded-2xl border border-border bg-surface p-4">
         <p className="text-lg font-semibold">{name}</p>
-        <a href={routeHref({ name: 'run', id: session.id })} className={PRIMARY_LINK}>
+        <a href={routeHref({ name: 'run', id: session.id, ...(from ? { from } : {}) })} className={PRIMARY_LINK}>
           Log this run
         </a>
       </div>

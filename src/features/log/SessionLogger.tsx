@@ -94,6 +94,7 @@ export default function SessionLogger({ id, from }: { id: UUID; from?: 'log' }) 
             key={block.child.id}
             block={block}
             session={view.session}
+            from={from}
             onLogged={() => timer.start(restSecondsFor(block, view, prefs.rest_seconds_default))}
             onRemoved={() => setIndex(null)}
           />

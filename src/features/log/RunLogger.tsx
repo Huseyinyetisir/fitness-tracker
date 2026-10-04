@@ -14,7 +14,7 @@ import { formatDateLong } from '../../lib/format';
 import type { Exercise, ISODate, Local, RunSplit, Session, UUID, WorkoutTemplateItem } from '../../types/domain';
 import RpeSelector from './RpeSelector';
 import { draftFromRun, emptyRunDraft, pacePreview, validateRun, type RunDraft, type RunErrors } from './runRules';
-import { saveRun } from './runsRepo';
+import { removeRun, saveRun } from './runsRepo';
 import { removeSession } from './sessionsRepo';
 import { loadSessionView } from './sessionView';
 import { finishSession } from './setsRepo';
@@ -26,6 +26,8 @@ interface RunData {
   exercise: Local<Exercise> | undefined;
   target: Local<WorkoutTemplateItem> | undefined;
   draft: RunDraft;
+  /** Whether a run is already logged in the session. */
+  hasRun: boolean;
 }
 
 export default function RunLogger({
@@ -61,6 +63,7 @@ export default function RunLogger({
         draft: view.run
           ? draftFromRun(view.run, splits)
           : emptyRunDraft(target?.target_distance_km ?? exercise?.default_distance_km ?? null),
+        hasRun: Boolean(view.run),
       };
     }
     const exercise = exerciseId ? await db.exercises.get(exerciseId) : undefined;
@@ -72,6 +75,7 @@ export default function RunLogger({
       exercise,
       target: undefined,
       draft: emptyRunDraft(exercise.default_distance_km),
+      hasRun: false,
     };
   }, [sessionId, exerciseId, date]);
 
@@ -80,11 +84,28 @@ export default function RunLogger({
 
   // Keyed on the run's identity so a sync re-delivering the same run does not
   // reset what the user is typing.
-  return <RunForm key={data.session?.id ?? 'new'} data={data} exercise={data.exercise} back={back} />;
+  return <RunForm key={data.session?.id ?? 'new'} data={data} exercise={data.exercise} back={back} from={from} />;
 }
 
-function RunForm({ data, exercise, back }: { data: RunData; exercise: Local<Exercise>; back: Route }) {
+function RunForm({
+  data,
+  exercise,
+  back,
+  from,
+}: {
+  data: RunData;
+  exercise: Local<Exercise>;
+  back: Route;
+  from?: 'log';
+}) {
   const { requestSync } = useApp();
+  // A pure run is a new run or a run session. The run inside a mixed session
+  // is only part of it: saving or deleting it returns to the session logger,
+  // and finishing, skipping, energy and notes belong to the session's own
+  // Finish panel.
+  const pureRun = !data.session || data.session.kind === 'run';
+  const exit: Route =
+    data.session && !pureRun ? { name: 'session', id: data.session.id, ...(from ? { from } : {}) } : back;
   const [draft, setDraft] = useState<RunDraft>(data.draft);
   const [energy, setEnergy] = useState<number | null>(data.session?.energy ?? null);
   const [notes, setNotes] = useState(data.session?.notes ?? '');
@@ -98,9 +119,9 @@ function RunForm({ data, exercise, back }: { data: RunData; exercise: Local<Exer
       setErrors(found);
       if (Object.keys(found).length > 0) return;
       const sessionId = await saveRun({ sessionId: data.session?.id ?? null, date: data.date, exerciseId: exercise.id, draft });
-      await finishSession(sessionId, { status: 'done', energy, notes: notes.trim() || null });
+      if (pureRun) await finishSession(sessionId, { status: 'done', energy, notes: notes.trim() || null });
       requestSync();
-      navigate(back);
+      navigate(exit);
     });
   }
 
@@ -108,7 +129,7 @@ function RunForm({ data, exercise, back }: { data: RunData; exercise: Local<Exer
 
   return (
     <section>
-      <ScreenHeader title={data.title} back={back} />
+      <ScreenHeader title={data.title} back={exit} />
       <p className="-mt-3 mb-4 text-sm text-muted">
         {formatDateLong(data.date)}
         {targetKm ? ` · target ${targetKm} km` : ''}
@@ -171,24 +192,28 @@ function RunForm({ data, exercise, back }: { data: RunData; exercise: Local<Exer
         <TextField label="Weather" value={draft.weather} onChange={(e) => set({ weather: e.target.value })} />
         <TextAreaField label="Route" rows={2} value={draft.routeNote} onChange={(routeNote) => set({ routeNote })} />
 
-        <div className="space-y-1">
-          <p className="text-sm text-muted">Energy</p>
-          <Segmented
-            label="Energy, 1 to 5"
-            value={energy === null ? '' : String(energy)}
-            options={['1', '2', '3', '4', '5'].map((v) => ({ value: v, label: v }))}
-            onChange={(v) => setEnergy(Number(v))}
-          />
-        </div>
-        <TextAreaField label="Notes" value={notes} onChange={setNotes} />
+        {pureRun && (
+          <>
+            <div className="space-y-1">
+              <p className="text-sm text-muted">Energy</p>
+              <Segmented
+                label="Energy, 1 to 5"
+                value={energy === null ? '' : String(energy)}
+                options={['1', '2', '3', '4', '5'].map((v) => ({ value: v, label: v }))}
+                onChange={(v) => setEnergy(Number(v))}
+              />
+            </div>
+            <TextAreaField label="Notes" value={notes} onChange={setNotes} />
+          </>
+        )}
 
         <Button variant="primary" block className="min-h-14 text-lg" disabled={busy} onClick={() => void save()}>
           Save run
         </Button>
 
-        {data.session && (
+        {data.session && (pureRun || data.hasRun) && (
           <div className="grid grid-cols-2 gap-2">
-            {data.session.status === 'planned' ? (
+            {pureRun && data.session.status === 'planned' ? (
               <Button
                 disabled={busy}
                 onClick={() =>
@@ -209,10 +234,15 @@ function RunForm({ data, exercise, back }: { data: RunData; exercise: Local<Exer
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  if (!window.confirm('Delete this session and the run logged in it?')) return;
-                  await removeSession(data.session!.id);
+                  if (pureRun) {
+                    if (!window.confirm('Delete this session and the run logged in it?')) return;
+                    await removeSession(data.session!.id);
+                  } else {
+                    if (!window.confirm('Delete this run? The rest of the session stays.')) return;
+                    await removeRun(data.session!.id);
+                  }
                   requestSync();
-                  navigate(back);
+                  navigate(exit);
                 })
               }
             >
