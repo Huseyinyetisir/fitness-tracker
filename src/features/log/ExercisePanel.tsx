@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { routeHref } from '../../app/routes';
 import { useSingleFlight } from '../../app/useSingleFlight';
 import Button, { PRIMARY_LINK } from '../../components/Button';
@@ -58,6 +58,25 @@ export default function ExercisePanel({
     );
     setErrors({});
   }, [child.id, setsKey, lastTimeKey, editing]);
+
+  // The note saves 800 ms after the last keystroke, and at once on blur or
+  // unmount: switching apps on Android may never blur the field, so saving
+  // only on blur could lose it.
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingNote = useRef<string | null>(null);
+  const savedNote = useRef(child.notes ?? '');
+  const flushNote = useCallback(() => {
+    if (noteTimer.current !== null) {
+      clearTimeout(noteTimer.current);
+      noteTimer.current = null;
+    }
+    const value = pendingNote.current;
+    pendingNote.current = null;
+    if (value === null || value.trim() === savedNote.current) return;
+    savedNote.current = value.trim();
+    void setExerciseNote(child.id, value);
+  }, [child.id]);
+  useEffect(() => flushNote, [flushNote]);
 
   if (exercise?.modality === 'cardio') {
     return (
@@ -179,8 +198,14 @@ export default function ExercisePanel({
         label="Exercise note"
         rows={2}
         defaultValue={child.notes ?? ''}
+        onChange={(value) => {
+          pendingNote.current = value;
+          if (noteTimer.current !== null) clearTimeout(noteTimer.current);
+          noteTimer.current = setTimeout(flushNote, 800);
+        }}
         onBlur={(value) => {
-          if (value.trim() !== (child.notes ?? '')) void setExerciseNote(child.id, value);
+          pendingNote.current = value;
+          flushNote();
         }}
       />
 
