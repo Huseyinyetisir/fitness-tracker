@@ -34,6 +34,8 @@ export class FitTrackerDB extends Dexie {
   constructor() {
     super('fit_tracker');
 
+    // Version 1 as shipped. Never edit it: devices already hold version 1
+    // databases, and Dexie upgrades them by replaying the versions in order.
     this.version(1).stores({
       exercises: 'id, _dirty, _deleted, updated_at, modality, muscle_group, sort_order',
       workout_templates: 'id, _dirty, _deleted, updated_at, name',
@@ -48,6 +50,12 @@ export class FitTrackerDB extends Dexie {
       body_metrics: 'id, _dirty, _deleted, updated_at, date',
       user_prefs: 'id, _dirty, _deleted, updated_at',
       sync_meta: 'table',
+    });
+
+    // Version 2: find every logged instance of an exercise, for "last time".
+    // Adding an index needs no data migration; Dexie builds it on upgrade.
+    this.version(2).stores({
+      session_exercises: 'id, _dirty, _deleted, updated_at, session_id, position, exercise_id',
     });
   }
 }
