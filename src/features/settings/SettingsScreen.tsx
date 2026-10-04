@@ -6,6 +6,7 @@ import Stepper from '../../components/Stepper';
 import { db } from '../../db/schema';
 import { useLiveQuery } from '../../db/useLiveQuery';
 import { signOut } from '../auth/useAuth';
+import DemoSection from './DemoSection';
 import { prefsId, updatePrefs } from './prefsRepo';
 import SyncStatus from './SyncStatus';
 import { usePrefs } from './usePrefs';
@@ -47,6 +48,8 @@ export default function SettingsScreen() {
             </>
           )}
         </div>
+
+        <DemoSection />
 
         <Button variant="danger" block onClick={() => void signOut()}>
           Sign out
