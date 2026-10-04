@@ -57,21 +57,53 @@ describe('pendingCount', () => {
 });
 
 describe('syncAll', () => {
-  it('pushes before it pulls', async () => {
-    await insertRow<Exercise>('exercises', baseExercise());
-    const { client, pushOrder, pullOrder } = recorder();
-
-    const result = await syncAll(client, 'u1');
-
-    expect(result.pushed).toBe(1);
-    expect(pushOrder.length).toBeGreaterThan(0);
-    expect(pullOrder.length).toBe(SYNCED_TABLES.length);
-  });
-
-  it('pulls every table in foreign-key order', async () => {
+  it('pulls every table exactly once', async () => {
     const { client, pullOrder } = recorder();
     await syncAll(client, 'u1');
-    expect(pullOrder).toEqual([...SYNCED_TABLES]);
+    expect([...pullOrder].sort()).toEqual([...SYNCED_TABLES].sort());
+  });
+
+  it('finishes every push before any pull starts', async () => {
+    await insertRow<Exercise>('exercises', baseExercise());
+    const log: string[] = [];
+    const client: PushClient & PullClient = {
+      async upsert(table) {
+        log.push(`push:${table}`);
+        return { error: null };
+      },
+      async select(table) {
+        log.push(`pull:${table}`);
+        return { rows: [] as BaseRow[], error: null };
+      },
+    };
+
+    await syncAll(client, 'u1');
+
+    const lastPush = log.map((e) => e.startsWith('push:')).lastIndexOf(true);
+    const firstPull = log.findIndex((e) => e.startsWith('pull:'));
+    expect(lastPush).toBeGreaterThanOrEqual(0);
+    expect(firstPull).toBeGreaterThan(lastPush);
+  });
+
+  it('runs the pulls concurrently', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const client: PushClient & PullClient = {
+      async upsert() {
+        return { error: null };
+      },
+      async select() {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 10));
+        inFlight--;
+        return { rows: [] as BaseRow[], error: null };
+      },
+    };
+
+    await syncAll(client, 'u1');
+
+    expect(maxInFlight).toBe(SYNCED_TABLES.length);
   });
 
   it('records last_synced_at on success', async () => {

@@ -43,10 +43,15 @@ export async function syncAll(
       pushed += await pushTable(client, name, userId);
     }
 
-    let pulled = 0;
-    for (const name of SYNCED_TABLES) {
-      pulled += await pullTable(client, name);
-    }
+    // Pulls run concurrently. Unlike pushes — where the server's foreign keys
+    // require parents before children — pulled rows land in Dexie, which has
+    // no foreign keys, and each table keeps its own watermark. Sequential
+    // pulls cost one round trip per table: ~7s per sync against the real
+    // project, almost all of it waiting.
+    const pulledCounts = await Promise.all(
+      SYNCED_TABLES.map((name) => pullTable(client, name)),
+    );
+    const pulled = pulledCounts.reduce((sum, n) => sum + n, 0);
 
     await recordMeta(null);
     return { pushed, pulled };
