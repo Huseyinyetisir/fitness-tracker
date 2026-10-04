@@ -1,6 +1,7 @@
 import { supabase } from '../supabase/client';
 import type { PushClient } from './push';
 import type { PullClient } from './pull';
+import type { WipeClient } from './wipe';
 import { fetchAllPages } from './paginate';
 import type { BaseRow } from '../types/domain';
 
@@ -12,7 +13,7 @@ import type { BaseRow } from '../types/domain';
  * make the sync tests depend on a gitignored .env file. The engine takes its
  * client as a parameter; only the UI reaches for this concrete one.
  */
-export const supabaseSyncClient: PushClient & PullClient = {
+export const supabaseSyncClient: PushClient & PullClient & WipeClient = {
   async upsert(table, rows) {
     const { error } = await supabase.from(table).upsert(rows, { onConflict: 'id' });
     return { error: error ? new Error(error.message) : null };
@@ -37,5 +38,12 @@ export const supabaseSyncClient: PushClient & PullClient = {
         error: error ? new Error(error.message) : null,
       };
     });
+  },
+
+  async deleteAll(table, userId) {
+    // Row Level Security already limits a delete to the caller's rows; the
+    // filter is still required: Supabase refuses a delete that has none.
+    const { error } = await supabase.from(table).delete().eq('user_id', userId);
+    return { error: error ? new Error(error.message) : null };
   },
 };
