@@ -1,6 +1,6 @@
-import ComingSoon from '../components/ComingSoon';
 import ExerciseForm from '../features/library/ExerciseForm';
 import LibraryScreen from '../features/library/LibraryScreen';
+import HistoryScreen from '../features/log/HistoryScreen';
 import RunLogger from '../features/log/RunLogger';
 import SessionLogger from '../features/log/SessionLogger';
 import TodayScreen from '../features/log/TodayScreen';
@@ -36,9 +36,9 @@ export default function Screen({ route }: { route: Route }) {
       return <ExerciseForm key={route.id} id={route.id} />;
     case 'progress':
       return <ProgressScreen />;
+    case 'log':
+      return <HistoryScreen />;
     case 'settings':
       return <SettingsScreen />;
-    default:
-      return <ComingSoon title={route.name} />;
   }
 }
