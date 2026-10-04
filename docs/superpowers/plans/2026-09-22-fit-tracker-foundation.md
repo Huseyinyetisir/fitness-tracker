@@ -3963,10 +3963,10 @@ A whole-implementation review after Task 22 found eight defects. The task code b
 | I1 | LWW compared raw strings, but PostgREST returns `+00:00` while the client writes `.000Z` — the same instant did not tie | Compare parsed epoch milliseconds (`623aaf4`) |
 | I4 | Fatigue flag forced `loadChange` to 0 when prior load was 0, so it fired on every RPE rise for bodyweight lifts | Return unflagged with a null load delta when there is no baseline (`6c70909`) |
 | I5 | `deleted_at` (null) and `was_planned` (boolean) were indexed in Dexie; neither is a valid IndexedDB key, and querying them threw | Indexed `_deleted: 0 \| 1` mirror; `was_planned` index dropped (`6098d85`) |
+| I2 | Pull issued one `select` per table, but Supabase caps a response at 1000 rows — a truncated pull was applied, the watermark advanced past it and the UI reported success | `src/sync/paginate.ts` pages until a short page arrives and fails rather than returning a partial result; pulls now sort by `id` as a tiebreak so no row is duplicated or skipped across a boundary (`da440f0`) |
 | I6, I7 | `visibilitychange` does not fire on load, so nothing synced until the user backgrounded the app; the `busy` guard read stale state; the lifecycle lived in a widget that unmounts | `src/sync/useSync.ts` owns the lifecycle with a ref guard; `SyncStatus` is presentational (`a338dbd`) |
 
 ### Known, deliberately deferred
 
-- **Pull is not paginated.** Supabase caps a request at 1000 rows by default. `pullTable` applies what it gets, advances the watermark and reports success, so a first sync past that ceiling is silently partial until repeated. Reachable once `set_entries` grows past a few months of logging. Fix in Plan 2 with a `.range()` loop.
 - **`epley1RM` special-cases 1 rep** to return the weight itself rather than the spec's `w × (1 + reps/30)`. That is defensible — a single *is* a 1RM, not an estimate — but it makes the scale inconsistent: a 1×105 scores below a 2×100, so a genuine single may not register as an e1RM PR. Needs a decision, not just a patch.
 - **No component tests.** `App.tsx`, `SyncStatus.tsx` and `SignIn.tsx` are untested; React Testing Library is not installed. The seeding race and C4 both lived in this layer.
