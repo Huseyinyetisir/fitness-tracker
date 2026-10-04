@@ -5,6 +5,5 @@ dist
 .env.local
 *.keystore
 keystore.properties
-android/
 .DS_Store
 .claude/launch.json
