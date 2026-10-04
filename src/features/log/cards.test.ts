@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { base, makeExercise, makeWorkout, resetDb } from '../../test/fixtures';
 import type { Exercise, Local, Run, Session, SessionExercise, SetEntry } from '../../types/domain';
-import { buildCards, loadSessionCards, sessionTitle } from './cards';
+import { buildCards, loadSessionCards, plannedSessionFor, sessionTitle } from './cards';
 import { createSessionFromTemplate } from './sessionsRepo';
 
 function session(id: string, extra: Partial<Session> = {}): Local<Session> {
@@ -167,5 +167,29 @@ describe('loadSessionCards', () => {
     const cards = await loadSessionCards('2026-10-05', '2026-10-11');
     expect(cards).toHaveLength(1);
     expect(cards[0]).toMatchObject({ title: 'Legs', targetSets: 3, workingSets: 0 });
+  });
+});
+
+describe('plannedSessionFor', () => {
+  const sessions = [
+    session('done-push', { template_id: 'push', status: 'done' }),
+    session('planned-push', { template_id: 'push', status: 'planned' }),
+    session('planned-empty', { template_id: null, status: 'planned' }),
+  ];
+
+  it("finds today's planned session for the chosen workout", () => {
+    expect(plannedSessionFor(sessions, 'push')?.id).toBe('planned-push');
+  });
+
+  it('ignores a session for the same workout that is no longer planned', () => {
+    expect(plannedSessionFor([sessions[0]], 'push')).toBeUndefined();
+  });
+
+  it('finds nothing for another workout', () => {
+    expect(plannedSessionFor(sessions, 'pull')).toBeUndefined();
+  });
+
+  it('never reuses a session for an empty workout', () => {
+    expect(plannedSessionFor(sessions, null)).toBeUndefined();
   });
 });

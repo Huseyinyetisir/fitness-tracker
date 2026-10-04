@@ -16,7 +16,7 @@ import { startOfWeek, today } from '../../lib/time';
 import type { UUID } from '../../types/domain';
 import { exerciseSummary } from '../library/exerciseRules';
 import { materializeWeek } from '../plan/materialize';
-import { loadSessionCards, type SessionCard } from './cards';
+import { loadSessionCards, plannedSessionFor, type SessionCard } from './cards';
 import { createSessionFromTemplate } from './sessionsRepo';
 
 export default function TodayScreen() {
@@ -44,7 +44,9 @@ export default function TodayScreen() {
 
   function startWorkout(templateId: UUID | null) {
     return run(async () => {
-      const session = await createSessionFromTemplate(date, templateId, { wasPlanned: false });
+      // Today's planned session for this workout is the one to log into.
+      const planned = plannedSessionFor((cards ?? []).map((c) => c.session), templateId);
+      const session = planned ?? (await createSessionFromTemplate(date, templateId, { wasPlanned: false }));
       navigate({ name: 'session', id: session.id });
     });
   }

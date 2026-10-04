@@ -30,6 +30,19 @@ export function sessionTitle(session: Session, templateName: string | undefined,
   return session.was_planned ? 'Workout' : 'Unplanned workout';
 }
 
+/**
+ * The planned session for a workout among one day's sessions, if any — so
+ * logging the workout already planned for today opens that session instead
+ * of creating a second one beside it. An empty workout never matches.
+ */
+export function plannedSessionFor<S extends Pick<Session, 'template_id' | 'status'>>(
+  sessions: S[],
+  templateId: Session['template_id'],
+): S | undefined {
+  if (templateId === null) return undefined;
+  return sessions.find((s) => s.template_id === templateId && s.status === 'planned');
+}
+
 export function buildCards(input: {
   sessions: Local<Session>[];
   children: SessionExercise[];
